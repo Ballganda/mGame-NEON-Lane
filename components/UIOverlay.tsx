@@ -1,0 +1,166 @@
+import React from 'react';
+import { GameState, PlayerStats, GameConfig } from '../types';
+import { COLORS } from '../constants';
+import { StorageService } from '../services/StorageService';
+
+interface UIProps {
+  gameState: GameState;
+  stats: any;
+  config: GameConfig;
+  onStart: () => void;
+  onResume: () => void;
+  onRestart: () => void;
+  onToggleSetting: (key: keyof GameConfig) => void;
+  onNavigate: (to: GameState) => void;
+}
+
+export const UIOverlay: React.FC<UIProps> = ({ 
+  gameState, stats, config, 
+  onStart, onResume, onRestart, onToggleSetting, onNavigate 
+}) => {
+
+  // -- Main Menu --
+  if (gameState === GameState.MENU) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 p-6 space-y-8 pointer-events-auto">
+        <h1 className="text-6xl font-black text-cyan-400 title-font tracking-tighter drop-shadow-[0_0_10px_rgba(0,255,255,0.8)] text-center">
+          NEON<br/><span className="text-white">LANE</span>
+        </h1>
+        <div className="flex flex-col w-full max-w-xs space-y-4">
+          <button onClick={onStart} className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-4 rounded-sm text-xl uppercase tracking-widest transition-transform active:scale-95">
+            Play
+          </button>
+          <button onClick={() => onNavigate(GameState.SETTINGS)} className="bg-gray-800 hover:bg-gray-700 border border-cyan-500/30 text-gray-400 font-bold py-3 rounded-sm text-lg uppercase">
+            Settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // -- HUD --
+  if (gameState === GameState.PLAYING) {
+    return (
+      <div className="absolute inset-0 pointer-events-none p-4 flex justify-between items-start">
+        
+        {/* Left Column: Stats & Info */}
+        <div className="flex flex-col items-start space-y-2">
+            {/* Score & Distance Block */}
+            <div className="bg-black/30 p-3 rounded border-l-4 border-cyan-500 backdrop-blur-sm">
+                <div className="text-white font-mono text-4xl font-black leading-none tracking-widest drop-shadow-md">
+                   {String(stats.score).padStart(6, '0')}
+                </div>
+                <div className="text-cyan-400 font-mono text-xl font-bold mt-1">
+                   {stats.distance}m
+                </div>
+            </div>
+            
+            {/* Secondary Stats */}
+            <div className="bg-black/20 p-2 rounded backdrop-blur-sm mt-2">
+                 <div className="text-red-400 font-bold text-lg font-mono">{stats.dps || 0} DPS</div>
+                 <div className="text-gray-500 font-mono text-xs flex gap-2">
+                    <span>{stats.fps} FPS</span>
+                    <span>|</span>
+                    <span>{stats.activeEntities} ENT</span>
+                 </div>
+            </div>
+        </div>
+
+        {/* Right Column: Pause */}
+        <div className="flex flex-col items-end pointer-events-auto">
+            <button onClick={() => onNavigate(GameState.PAUSED)} className="bg-black/40 hover:bg-white/10 p-2 border border-white/20 rounded mb-6 backdrop-blur-sm">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </button>
+        </div>
+      </div>
+    );
+  }
+
+  // -- Pause --
+  if (gameState === GameState.PAUSED) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 backdrop-blur-sm pointer-events-auto">
+        <h2 className="text-4xl font-bold text-white mb-8 title-font">PAUSED</h2>
+        <button onClick={onResume} className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-3 px-8 rounded-sm text-xl mb-4 w-64">
+          RESUME
+        </button>
+        <button onClick={() => onNavigate(GameState.MENU)} className="bg-red-900/50 hover:bg-red-800 border border-red-500 text-white font-bold py-3 px-8 rounded-sm text-xl w-64">
+          QUIT
+        </button>
+      </div>
+    );
+  }
+
+  // -- Game Over --
+  if (gameState === GameState.GAME_OVER) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-900/90 z-30 p-6 pointer-events-auto">
+        <h2 className="text-5xl font-black text-white mb-2 title-font tracking-widest">DEFEAT</h2>
+        <div className="bg-black/50 p-6 rounded-lg border border-red-500/50 w-full max-w-sm mb-8">
+            <div className="flex justify-between text-lg mb-2">
+                <span className="text-gray-400">Score</span>
+                <span className="font-mono text-cyan-400 font-bold text-xl">{stats.score}</span>
+            </div>
+            <div className="flex justify-between text-lg">
+                <span className="text-gray-400">Distance</span>
+                <span className="font-mono">{stats.distance}m</span>
+            </div>
+        </div>
+        
+        <button onClick={onRestart} className="bg-white text-black font-bold py-4 px-8 rounded-sm text-xl w-full max-w-xs mb-4 hover:bg-gray-200">
+          RETRY
+        </button>
+        <button onClick={() => onNavigate(GameState.MENU)} className="bg-transparent border border-white/30 text-white font-bold py-3 px-8 rounded-sm text-lg w-full max-w-xs hover:bg-white/10">
+            MENU
+        </button>
+      </div>
+    );
+  }
+
+  // -- Settings --
+  if (gameState === GameState.SETTINGS) {
+    return (
+        <div className="absolute inset-0 bg-black z-20 flex flex-col p-8 justify-center pointer-events-auto">
+            <h2 className="text-3xl font-bold text-white title-font mb-8 text-center">SETTINGS</h2>
+            
+            <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                    <span className="text-xl text-gray-300">Sound Effects</span>
+                    <button 
+                        onClick={() => onToggleSetting('soundEnabled')}
+                        className={`w-16 h-8 rounded-full p-1 transition-colors ${config.soundEnabled ? 'bg-cyan-500' : 'bg-gray-700'}`}
+                    >
+                        <div className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${config.soundEnabled ? 'translate-x-8' : ''}`} />
+                    </button>
+                </div>
+                <div className="flex justify-between items-center">
+                    <span className="text-xl text-gray-300">Haptics</span>
+                    <button 
+                        onClick={() => onToggleSetting('hapticsEnabled')}
+                        className={`w-16 h-8 rounded-full p-1 transition-colors ${config.hapticsEnabled ? 'bg-cyan-500' : 'bg-gray-700'}`}
+                    >
+                        <div className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${config.hapticsEnabled ? 'translate-x-8' : ''}`} />
+                    </button>
+                </div>
+                <div className="flex justify-between items-center">
+                    <span className="text-xl text-gray-300">Reduced VFX</span>
+                    <button 
+                        onClick={() => onToggleSetting('reducedEffects')}
+                        className={`w-16 h-8 rounded-full p-1 transition-colors ${config.reducedEffects ? 'bg-cyan-500' : 'bg-gray-700'}`}
+                    >
+                        <div className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${config.reducedEffects ? 'translate-x-8' : ''}`} />
+                    </button>
+                </div>
+            </div>
+
+            <button onClick={() => onNavigate(GameState.MENU)} className="mt-12 bg-gray-800 text-white py-4 rounded font-bold border border-gray-600">
+                BACK
+            </button>
+        </div>
+    );
+  }
+
+  return null;
+};
