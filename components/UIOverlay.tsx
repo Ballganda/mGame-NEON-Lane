@@ -105,7 +105,7 @@ export const UIOverlay: React.FC<UIProps> = ({
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-900/90 z-30 p-6 pointer-events-auto">
         <h2 className="text-5xl font-black text-white mb-2 title-font tracking-widest">DEFEAT</h2>
-        <div className="bg-black/50 p-6 rounded-lg border border-red-500/50 w-full max-w-sm mb-8">
+        <div className="bg-black/50 p-6 rounded-lg border border-red-500/50 w-full max-sm mb-8">
             <div className="flex justify-between text-lg mb-2">
                 <span className="text-gray-400">Score</span>
                 <span className="font-mono text-cyan-400 font-bold text-xl">{stats.score}</span>
@@ -178,6 +178,15 @@ export const UIOverlay: React.FC<UIProps> = ({
                         className={`w-16 h-8 rounded-full p-1 transition-colors ${config.reducedEffects ? 'bg-cyan-500' : 'bg-gray-700'}`}
                     >
                         <div className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${config.reducedEffects ? 'translate-x-8' : ''}`} />
+                    </button>
+                </div>
+                <div className="flex justify-between items-center">
+                    <span className="text-xl text-gray-300 font-bold text-white italic">Let it snow</span>
+                    <button 
+                        onClick={() => onToggleSetting('snowEnabled')}
+                        className={`w-16 h-8 rounded-full p-1 transition-colors ${config.snowEnabled ? 'bg-blue-400' : 'bg-gray-700'}`}
+                    >
+                        <div className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${config.snowEnabled ? 'translate-x-8' : ''}`} />
                     </button>
                 </div>
             </div>

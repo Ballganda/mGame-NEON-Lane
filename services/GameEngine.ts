@@ -7,6 +7,14 @@ import {
 } from '../constants';
 import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types';
 
+interface SnowParticle {
+  x: number;
+  y: number;
+  size: number;
+  speed: number;
+  drift: number;
+}
+
 export class GameEngine {
   public state: GameState = GameState.MENU;
   public entities: Entity[] = [];
@@ -16,6 +24,7 @@ export class GameEngine {
   private enemies: Entity[] = [];
   private bullets: Entity[] = [];
   private pickups: Entity[] = [];
+  private snowParticles: SnowParticle[] = [];
   
   public score: number = 0;
   public distance: number = 0;
@@ -67,6 +76,46 @@ export class GameEngine {
     };
 
     this.setupInput(canvas);
+    this.initSnow();
+  }
+
+  private initSnow() {
+    this.snowParticles = [];
+    for (let i = 0; i < 150; i++) {
+      this.snowParticles.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: Math.random() * CANVAS_HEIGHT,
+        size: Math.random() * 3 + 1,
+        speed: Math.random() * 50 + 50,
+        drift: (Math.random() - 0.5) * 20
+      });
+    }
+  }
+
+  private updateSnow(dt: number) {
+    if (!this.config.snowEnabled) return;
+    for (const p of this.snowParticles) {
+      p.y += p.speed * dt;
+      p.x += p.drift * dt;
+      if (p.y > CANVAS_HEIGHT) {
+        p.y = -10;
+        p.x = Math.random() * CANVAS_WIDTH;
+      }
+      if (p.x < 0) p.x = CANVAS_WIDTH;
+      if (p.x > CANVAS_WIDTH) p.x = 0;
+    }
+  }
+
+  private drawSnow(ctx: CanvasRenderingContext2D) {
+    if (!this.config.snowEnabled) return;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    for (const p of this.snowParticles) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   private getLaneWorldX(laneIndex: number): number {
@@ -173,16 +222,19 @@ export class GameEngine {
     this.lastTime = now;
     if (deltaTime > 0.25) deltaTime = 0.25;
 
-    if (this.state === GameState.PLAYING) {
+    if (this.state === GameState.PLAYING || this.state === GameState.MENU) {
       this.accumulator += deltaTime;
       this.fps = Math.round(1 / deltaTime);
       while (this.accumulator >= this.step) {
-        this.update(this.step);
+        if (this.state === GameState.PLAYING) {
+          this.update(this.step);
+        } else if (this.state === GameState.MENU) {
+          this.gridOffset = (this.gridOffset + (GRID_SPEED * 0.5) * this.step) % 200;
+          this.distance += (BASE_SCROLL_SPEED * 0.5) * this.step;
+        }
+        this.updateSnow(this.step);
         this.accumulator -= this.step;
       }
-    } else if (this.state === GameState.MENU) {
-      this.gridOffset = (this.gridOffset + (GRID_SPEED * 0.5) * deltaTime) % 200;
-      this.distance += (BASE_SCROLL_SPEED * 0.5) * deltaTime;
     }
 
     this.draw();
@@ -658,6 +710,9 @@ export class GameEngine {
       else this.drawEntity(ctx, ent, proj);
     }
     if (this.invulnerabilityTimer <= 0 || Math.floor(performance.now()/50)%2 === 0) this.drawPlayerSquad(ctx);
+    
+    this.drawSnow(ctx);
+    
     ctx.restore();
   }
 

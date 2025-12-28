@@ -6,7 +6,8 @@ const DEFAULT_CONFIG: GameConfig = {
   soundEnabled: true,
   hapticsEnabled: true,
   reducedEffects: false,
-  difficulty: Difficulty.NORMAL
+  difficulty: Difficulty.NORMAL,
+  snowEnabled: false
 };
 
 export class StorageService {

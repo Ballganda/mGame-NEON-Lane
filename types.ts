@@ -112,4 +112,5 @@ export interface GameConfig {
   hapticsEnabled: boolean;
   reducedEffects: boolean;
   difficulty: Difficulty;
+  snowEnabled: boolean;
 }
