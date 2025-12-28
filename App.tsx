@@ -23,12 +23,11 @@ export default function App() {
 
   const engineRef = useRef<GameEngine | null>(null);
 
-  // Derive initial stats
   const getInitialStats = (): PlayerStats => ({
     maxHp: 100,
     damage: 10,
     fireRate: 4, 
-    projectileCount: 1, // Will be reinforced by initGame
+    projectileCount: 1, 
     moveSpeed: BASE_PLAYER_SPEED
   });
 
@@ -36,16 +35,15 @@ export default function App() {
     if (newStats.state && newStats.state !== gameState) {
       setGameState(newStats.state);
     }
-    
-    // Batch UI updates
     setStats(prev => ({ ...prev, ...newStats }));
   }, [gameState]);
 
   const startGame = () => {
     if (engineRef.current) {
-      engineRef.current.playerStats = getInitialStats(); // Reset stats
-      engineRef.current.initGame(); // Use engine internal reset logic
-      engineRef.current.start();
+      engineRef.current.playerStats = getInitialStats(); 
+      engineRef.current.initGame(); 
+      // Explicitly start playing
+      engineRef.current.setGameState(GameState.PLAYING);
     }
     setGameState(GameState.PLAYING);
   };
@@ -63,15 +61,12 @@ export default function App() {
 
   return (
     <div className="relative w-full h-screen bg-neutral-900 overflow-hidden select-none">
-      {/* Game Layer */}
       <GameCanvas 
         config={config} 
         initialStats={getInitialStats()} 
         onUpdate={handleUIUpdate}
         engineRef={engineRef}
       />
-      
-      {/* UI Layer */}
       <UIOverlay 
         gameState={gameState} 
         stats={stats}

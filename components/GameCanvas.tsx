@@ -25,7 +25,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, initialStats, on
     );
     
     engineRef.current = engine;
-    engine.initGame(); // Initialize game state (spawns initial entities)
+    engine.initGame(); 
+    // Start loop but keep in MENU state
     engine.start();
 
     // Cleanup

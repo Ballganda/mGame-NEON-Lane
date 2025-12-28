@@ -22,8 +22,6 @@ export class GameEngine {
   public distance: number = 0;
   public wave: number = 1;
   public fps: number = 60;
-  
-  // DPS Tracking
   public currentPotentialDps: number = 0;
 
   // Configuration & Modifiers
@@ -61,7 +59,6 @@ export class GameEngine {
     this.config = initialConfig;
     this.playerStats = { ...initialStats };
     
-    // Initialize Player at Center (0)
     this.player = {
       id: 0,
       type: EntityType.PLAYER,
@@ -77,7 +74,6 @@ export class GameEngine {
     this.setupInput(canvas);
   }
 
-  // Helper to get lane center for Spawning only
   private getLaneWorldX(laneIndex: number): number {
     const totalWidth = LANE_COUNT * WORLD_LANE_WIDTH;
     const startX = -totalWidth / 2 + (WORLD_LANE_WIDTH / 2);
@@ -92,7 +88,6 @@ export class GameEngine {
       const scaleX = CANVAS_WIDTH / rect.width;
       const canvasX = (clientX - rect.left) * scaleX;
 
-      // Inverse Project: Screen X -> World X
       const scale = CAMERA_DEPTH / (PLAYER_Z + CAMERA_DEPTH);
       const screenCX = CANVAS_WIDTH / 2;
       const worldX = (canvasX - screenCX) / scale;
@@ -107,19 +102,17 @@ export class GameEngine {
     };
 
     canvas.addEventListener('touchstart', (e) => {
-      // Allow multi-touch for buttons, but track first touch for movement
       const t = e.changedTouches[0];
       handleMove(t.clientX); 
     }, { passive: false });
     
     canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault(); // Prevent scroll
+      e.preventDefault();
       const t = e.changedTouches[0];
       handleMove(t.clientX);
     }, { passive: false });
 
     canvas.addEventListener('touchend', handleEnd);
-
     canvas.addEventListener('mousedown', (e) => {
       if (this.state === GameState.PLAYING) handleMove(e.clientX);
     });
@@ -130,13 +123,13 @@ export class GameEngine {
     canvas.addEventListener('mouseleave', handleEnd);
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') this.inputKeys.left = true;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') this.inputKeys.right = true;
+      if (e.key === 'ArrowLeft' || e.key === 'a') this.inputKeys.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd') this.inputKeys.right = true;
     });
 
     window.addEventListener('keyup', (e) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') this.inputKeys.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') this.inputKeys.right = false;
+      if (e.key === 'ArrowLeft' || e.key === 'a') this.inputKeys.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd') this.inputKeys.right = false;
     });
   }
 
@@ -152,11 +145,11 @@ export class GameEngine {
     this.currentPotentialDps = 0;
     this.invulnerabilityTimer = 0;
     
-    // Start with 1 unit
+    // Ensure 1 projectile
     this.playerStats.projectileCount = 1;
 
     this.player.active = true;
-    this.player.pos.x = 0; // Center
+    this.player.pos.x = 0;
     this.touchTargetX = null;
     this.isTouching = false;
     
@@ -166,21 +159,26 @@ export class GameEngine {
     this.shakeTimer = 0;
     this.bossActive = false;
     this.gridOffset = 0;
+  }
 
-    // Don't spawn gate immediately, give player a second
-    // this.spawnGateRow(1800); 
+  public setGameState(newState: GameState) {
+      this.state = newState;
+      if (newState === GameState.PLAYING) {
+          this.lastTime = performance.now();
+      }
   }
 
   public start() {
-    this.state = GameState.PLAYING;
-    this.lastTime = performance.now();
-    this.loop();
+    // Just starts the loop, doesn't force state to PLAYING
+    if (!this.animationFrameId) {
+        this.lastTime = performance.now();
+        this.loop();
+    }
   }
 
   public pause() {
     if (this.state === GameState.PLAYING) {
       this.state = GameState.PAUSED;
-      if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
       this.onUIUpdate({ state: this.state });
     }
   }
@@ -189,12 +187,14 @@ export class GameEngine {
     if (this.state === GameState.PAUSED) {
       this.state = GameState.PLAYING;
       this.lastTime = performance.now();
-      this.loop();
     }
   }
 
   public stop() {
-    if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+    if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+    }
     this.state = GameState.MENU;
   }
 
@@ -203,35 +203,41 @@ export class GameEngine {
   }
 
   private loop = () => {
-    if (this.state !== GameState.PLAYING) return;
-
     const now = performance.now();
     let deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
 
     if (deltaTime > 0.25) deltaTime = 0.25;
 
-    this.accumulator += deltaTime;
-    this.fps = Math.round(1 / deltaTime);
+    // Only update game logic if playing
+    if (this.state === GameState.PLAYING) {
+        this.accumulator += deltaTime;
+        this.fps = Math.round(1 / deltaTime);
 
-    while (this.accumulator >= this.step) {
-      this.update(this.step);
-      this.accumulator -= this.step;
+        while (this.accumulator >= this.step) {
+            this.update(this.step);
+            this.accumulator -= this.step;
+        }
+    } else if (this.state === GameState.MENU) {
+        // Idling animation
+        this.gridOffset = (this.gridOffset + (GRID_SPEED * 0.5) * deltaTime) % 200;
+        this.fps = 60;
     }
 
     this.draw();
     
-    this.currentPotentialDps = this.playerStats.damage * this.playerStats.projectileCount * this.playerStats.fireRate;
-
-    this.onUIUpdate({
-      score: Math.floor(this.score),
-      hp: this.playerStats.projectileCount,
-      distance: Math.floor(this.distance),
-      fps: this.fps,
-      state: this.state,
-      activeEntities: this.entities.length,
-      dps: Math.round(this.currentPotentialDps)
-    });
+    if (this.state === GameState.PLAYING) {
+        this.currentPotentialDps = this.playerStats.damage * this.playerStats.projectileCount * this.playerStats.fireRate;
+        this.onUIUpdate({
+            score: Math.floor(this.score),
+            hp: this.playerStats.projectileCount,
+            distance: Math.floor(this.distance),
+            fps: this.fps,
+            state: this.state,
+            activeEntities: this.entities.length,
+            dps: Math.round(this.currentPotentialDps)
+        });
+    }
 
     this.animationFrameId = requestAnimationFrame(this.loop);
   }
@@ -255,57 +261,44 @@ export class GameEngine {
       return;
     }
 
-    if (this.invulnerabilityTimer > 0) {
-      this.invulnerabilityTimer -= dt;
-    }
+    if (this.invulnerabilityTimer > 0) this.invulnerabilityTimer -= dt;
 
     // World Logic
     const scrollSpeed = BASE_SCROLL_SPEED + (this.wave * 10);
     this.distance += scrollSpeed * dt;
-    // Calculate Wave based on distance (approx every 1500m is a new wave)
     this.wave = 1 + Math.floor(this.distance / 1500);
 
     this.score += 10 * dt;
     this.gridOffset = (this.gridOffset + GRID_SPEED * dt) % 200;
 
     // --- PLAYER MOVEMENT ---
-    const boundary = (TOTAL_WORLD_WIDTH / 2) - 40; // Keep slightly inside edges
+    const boundary = (TOTAL_WORLD_WIDTH / 2) - 40;
 
     if (this.isTouching && this.touchTargetX !== null) {
-      // Direct Touch Following
       const diff = this.touchTargetX - this.player.pos.x;
       this.player.pos.x += diff * 15 * dt;
     } else {
-      // Keyboard
       if (this.inputKeys.left) this.player.pos.x -= BASE_PLAYER_SPEED * dt;
       if (this.inputKeys.right) this.player.pos.x += BASE_PLAYER_SPEED * dt;
     }
 
-    // Clamp
     if (this.player.pos.x < -boundary) this.player.pos.x = -boundary;
     if (this.player.pos.x > boundary) this.player.pos.x = boundary;
 
-    // --- CALCULATE LOGICAL LANE (For Gates) ---
-    // Even though moving smoothly, which lane "slot" are we in?
-    // Start X of Lane 0
     const laneWidth = WORLD_LANE_WIDTH;
     const totalWidth = LANE_COUNT * laneWidth;
     const startX = -totalWidth / 2 + (laneWidth / 2);
-    // x = startX + (lane * width)  =>  lane = (x - startX) / width
     const exactLane = (this.player.pos.x - startX) / laneWidth;
     const logicalLane = Math.max(0, Math.min(LANE_COUNT - 1, Math.round(exactLane)));
 
-
     if (this.shakeTimer > 0) this.shakeTimer -= dt;
 
-    // Shooting
     this.shootTimer -= dt;
     if (this.shootTimer <= 0) {
       this.fireBullet();
       this.shootTimer = 1 / this.playerStats.fireRate;
     }
 
-    // Spawning
     if (!this.bossActive) {
       this.spawnManager(dt);
     }
@@ -313,16 +306,14 @@ export class GameEngine {
     this.enemies = [];
     this.bullets = [];
 
-    // Entity Loop
+    // Entity Update
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const ent = this.entities[i];
-      
       if (!ent.active) {
         this.entities.splice(i, 1);
         continue;
       }
 
-      // Move Logic
       if (ent.type !== EntityType.BOSS) {
          if (ent.type === EntityType.BULLET) {
              if (ent.velocity) {
@@ -331,18 +322,18 @@ export class GameEngine {
              }
              this.bullets.push(ent);
          } else {
+             // Move towards player
+             ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
+             
              if (ent.type.startsWith('ENEMY')) {
                this.enemies.push(ent);
-               ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
-               
+               // Simple convergence
                if (ent.pos.y < CONVERGENCE_Z) {
                    const dx = this.player.pos.x - ent.pos.x;
                    if (Math.abs(dx) < WORLD_LANE_WIDTH * 2) {
                        ent.pos.x += Math.sign(dx) * 120 * dt; 
                    }
                }
-             } else {
-               ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
              }
          }
       }
@@ -351,13 +342,9 @@ export class GameEngine {
         ent.active = false;
       }
 
-      // Collisions
       if (ent.active && ent.type !== EntityType.BULLET) {
           if (ent.type === EntityType.GATE) {
-             // GATE LOGIC: Strict Lane Snapping
-             // Only activate if player is logically in this gate's lane
              if (ent.lane === logicalLane) {
-                 // Check Depth overlap (allowing some tolerance)
                  if (Math.abs(ent.pos.y - this.player.pos.y) < 50) {
                      this.handlePlayerCollision(ent);
                  }
@@ -394,7 +381,6 @@ export class GameEngine {
         }
     }
 
-    // Particles
     if (this.particles.length > MAX_PARTICLES) {
         this.particles.splice(0, this.particles.length - MAX_PARTICLES);
     }
@@ -409,22 +395,24 @@ export class GameEngine {
   }
 
   private spawnManager(dt: number) {
-    // 1. GATE Spawning (Distance based)
-    // Check if we travelled far enough for a gate
+    // 1. GATE Spawning
     if (this.distance - this.lastGateDistance > GATE_SPAWN_DISTANCE) {
         this.spawnGateRow();
         this.lastGateDistance = this.distance;
     }
 
-    // 2. ENEMY Spawning (Time based)
-    // Runs independently of Gates
+    // 2. ENEMY Spawning
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
         const pattern = Math.random();
         if (pattern < 0.5) this.spawnArmyWave(); 
         else if (pattern < 0.8) this.spawnEliteWave();
         else this.spawnSimpleGap();
-        this.spawnTimer = Math.max(0.8, 3.0 - (this.wave * 0.15));
+        
+        // Ensure delay is always positive and reasonable, regardless of wave
+        const minDelay = 0.8;
+        const waveReduct = Math.min(2.0, this.wave * 0.15);
+        this.spawnTimer = Math.max(minDelay, 3.0 - waveReduct);
     }
   }
 
@@ -434,12 +422,8 @@ export class GameEngine {
       const diffMult = this.getDifficultyMultiplier();
       let baseHp = (10 + (this.wave * 5)) * diffMult;
       
-      // CAP DPS used for scaling
       const effectiveDps = Math.min(this.currentPotentialDps || 0, 100000);
-
-      // Scale Army Size with capped DPS
       let dpsDepthBonus = Math.floor(effectiveDps / 100); 
-      
       let gridDepth = 5 + dpsDepthBonus + Math.floor(Math.random() * 4); 
       
       const MAX_GRID_DEPTH = 30; 
@@ -452,7 +436,6 @@ export class GameEngine {
       const gridWidth = 5;
       const spacingX = 35; 
       const spacingZ = 40; 
-      
       const startXOffset = -((gridWidth - 1) * spacingX) / 2;
       let currentZ = SPAWN_Z;
 
@@ -480,7 +463,6 @@ export class GameEngine {
           this.spawnEntity(type, laneX, currentZ, r, baseHp * 3, 50);
       }
       
-      // Spawn Bomb/Pickup
       if (Math.random() > 0.6) {
           const pLane = (targetLane + 1) % LANE_COUNT;
           this.spawnPickup(pLane, SPAWN_Z);
@@ -559,22 +541,18 @@ export class GameEngine {
      });
   }
 
-  private spawnGateRow(zOverride?: number) {
-     const z = zOverride ?? SPAWN_Z;
+  private spawnGateRow() {
+     const z = SPAWN_Z;
      const expectedDps = this.wave * 200;
      const actualDps = Math.min(this.currentPotentialDps || 200, 100000);
      const powerRatio = actualDps / expectedDps;
      
-     // EASIER EARLY GAME - Tweak logic
      let negativeBias = 0.5;
-     
-     if (this.wave <= 1) {
-         negativeBias = 0.1; 
-     } else {
+     if (this.wave <= 1) negativeBias = 0.1; 
+     else {
          if (powerRatio > 1.2) negativeBias = 0.7; 
          else if (powerRatio < 0.5) negativeBias = 0.2;
          else negativeBias = 0.5;
-         
          if (this.wave > 5) negativeBias = Math.max(negativeBias, 0.4); 
      }
 
@@ -584,7 +562,6 @@ export class GameEngine {
 
      for (let i = 0; i < LANE_COUNT; i++) {
         if (i === openLaneIndex) continue;
-
         let wantBad = Math.random() < negativeBias;
         if (i === guaranteedGoodLane && powerRatio < 0.8) wantBad = false;
 
@@ -635,7 +612,6 @@ export class GameEngine {
        this.createExplosion(this.player.pos.x, this.player.pos.y, 10, ent.gateData!.value > 0 ? '#00ff00' : '#ff0000');
        if (this.config.hapticsEnabled) navigator.vibrate(20);
     } else {
-       // Standard Radius Check for others
        if (this.checkCollision(this.player, ent)) {
            if (ent.type === EntityType.PICKUP) {
                ent.active = false;
@@ -671,17 +647,17 @@ export class GameEngine {
   private applyPickup(type: PickupType) {
     if (this.config.hapticsEnabled) navigator.vibrate(50);
     
-    // Define Radius/Effect based on type
+    // New Sizes
     let radius = 0;
     let color = '#fff';
     
     switch (type) {
         case PickupType.BOMB_SMALL:
-            radius = 300;
+            radius = 400;
             color = COLORS.PICKUP_BOMB_SMALL;
             break;
         case PickupType.BOMB_MEDIUM:
-            radius = 600;
+            radius = 800;
             color = COLORS.PICKUP_BOMB_MEDIUM;
             break;
         case PickupType.BOMB_LARGE:
@@ -689,13 +665,12 @@ export class GameEngine {
             color = COLORS.PICKUP_BOMB_LARGE;
             break;
         case PickupType.CLUSTER:
-            radius = 2000; // Just visual trigger for logic below
+            radius = 2000; 
             color = COLORS.PICKUP_CLUSTER;
             break;
     }
 
     if (type === PickupType.CLUSTER) {
-        // Forward Cone Clear
         this.entities.forEach(e => {
             if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z) {
                 const dist = Math.abs(e.pos.y - this.player.pos.y);
@@ -710,7 +685,6 @@ export class GameEngine {
         });
         this.createExplosion(0, 300, 20, color);
     } else {
-        // Radial Clear
         this.entities.forEach(e => {
             if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z && e.pos.y > -200) {
                  const dx = e.pos.x - this.player.pos.x;
@@ -755,14 +729,14 @@ export class GameEngine {
   private findAutoAimTarget(): Entity | null {
     let nearest: Entity | null = null;
     let minSqDist = Infinity;
-    const maxAngle = 3 * (Math.PI / 180); 
+    const maxAngle = 10 * (Math.PI / 180); // Slight wider cone
 
     for (const ent of this.enemies) {
         if (!ent.active) continue;
         if (ent.pos.y <= this.player.pos.y) continue;
         const dx = ent.pos.x - this.player.pos.x;
         const dy = ent.pos.y - this.player.pos.y;
-        const angle = Math.atan2(dx, dy);
+        const angle = Math.atan2(dx, dy); // Angle relative to forward (Y axis)
         if (Math.abs(angle) <= maxAngle) {
             const sqDist = dx*dx + dy*dy;
             if (sqDist < minSqDist) {
@@ -789,20 +763,14 @@ export class GameEngine {
     const target = this.findAutoAimTarget();
     const speed = 1800;
 
-    // Cone Spread Calculation
-    // Total spread angle varies by bullet count, maxing at ~30 degrees for huge squads
-    const maxSpread = 20 * (Math.PI / 180);
-    const currentSpread = Math.min(maxSpread, (actualBulletCount * 0.5) * (Math.PI / 180));
+    const maxSpread = 25 * (Math.PI / 180);
+    const spreadFactor = Math.min(1.0, actualBulletCount / 10);
+    const currentSpread = maxSpread * spreadFactor;
     
     for (let i = 0; i < offsets.length; i++) {
         const off = offsets[i];
-        let vx = 0;
-        let vy = speed;
         
-        // Calculate Base Angle (Aim at target or straight ahead)
-        let baseAngle = Math.PI / 2; // Straight up in standard trig, but here Y is depth. 
-        // We use vectors, so let's stick to vector math.
-        
+        // Base Direction
         let dirX = 0; 
         let dirY = 1;
 
@@ -818,25 +786,18 @@ export class GameEngine {
             }
         }
 
-        // Apply Cone Spread
-        // angleOffset is distributed from -spread/2 to +spread/2
+        // Cone Spread Calculation
         let angleOffset = 0;
         if (actualBulletCount > 1) {
             const step = currentSpread / (actualBulletCount - 1);
             angleOffset = -currentSpread/2 + (i * step);
         }
 
-        // Rotate the direction vector by angleOffset
-        // x' = x cos(theta) - y sin(theta)
-        // y' = x sin(theta) + y cos(theta)
         const cos = Math.cos(angleOffset);
         const sin = Math.sin(angleOffset);
         
         const finalDirX = dirX * cos - dirY * sin;
         const finalDirY = dirX * sin + dirY * cos;
-
-        vx = finalDirX * speed;
-        vy = finalDirY * speed;
 
         this.entities.push({
             id: Math.random(),
@@ -849,7 +810,7 @@ export class GameEngine {
             color: bulletColor,
             lane: -1,
             damage: bulletDamage,
-            velocity: { x: vx, y: vy }
+            velocity: { x: finalDirX * speed, y: finalDirY * speed }
         });
     }
   }
@@ -881,7 +842,6 @@ export class GameEngine {
 
   private endGame() {
     this.state = GameState.GAME_OVER;
-    if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     this.onUIUpdate({ state: this.state });
   }
 
@@ -920,7 +880,6 @@ export class GameEngine {
 
     this.drawGrid(ctx);
 
-    // Draw Convergence Line
     const trackLeftX = this.getLaneWorldX(0) - (WORLD_LANE_WIDTH / 2);
     const trackRightX = this.getLaneWorldX(LANE_COUNT - 1) + (WORLD_LANE_WIDTH / 2);
 
@@ -930,7 +889,7 @@ export class GameEngine {
     if (pConvLeft.visible) {
         ctx.strokeStyle = COLORS.LANE_BORDER; 
         ctx.lineWidth = 2;
-        ctx.setLineDash([15, 15]); // Dashed line to indicate zone transition
+        ctx.setLineDash([15, 15]);
         ctx.beginPath();
         ctx.moveTo(pConvLeft.x, pConvLeft.y);
         ctx.lineTo(pConvRight.x, pConvRight.y);
@@ -971,6 +930,7 @@ export class GameEngine {
         else this.drawEntity(ctx, ent, proj);
     }
 
+    // Always draw player in menu or game
     if (this.invulnerabilityTimer <= 0 || Math.floor(performance.now() / 50) % 2 === 0) {
       this.drawPlayerSquad(ctx);
     }
@@ -1007,7 +967,6 @@ export class GameEngine {
       const projP = this.project(this.player.pos);
       const scale = projP.scale;
 
-      // Color logic: White for leader (index 0), Player Color for others
       for(let i=0; i<offsets.length; i++) {
           const off = offsets[i];
           const x = projP.x + (off.x * scale);
@@ -1040,7 +999,6 @@ export class GameEngine {
       ctx.rotate(performance.now() / 200);
       const s = 15 * proj.scale;
       
-      // Draw Diamond Shape for Special
       ctx.beginPath();
       ctx.moveTo(0, -s);
       ctx.lineTo(s, 0);
@@ -1053,7 +1011,6 @@ export class GameEngine {
       ctx.lineWidth = 3 * proj.scale;
       ctx.stroke();
       
-      // Icon
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -1063,7 +1020,6 @@ export class GameEngine {
       if (ent.pickupType === PickupType.BOMB_SMALL || ent.pickupType === PickupType.BOMB_MEDIUM || ent.pickupType === PickupType.BOMB_LARGE) icon = '☢';
       
       ctx.fillText(icon, 0, 0);
-
       ctx.restore();
     } else {
       ctx.beginPath();

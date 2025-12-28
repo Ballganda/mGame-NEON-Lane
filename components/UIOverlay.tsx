@@ -32,7 +32,7 @@ export const UIOverlay: React.FC<UIProps> = ({
   // -- Main Menu --
   if (gameState === GameState.MENU) {
     return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 p-6 space-y-8 pointer-events-auto">
+      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 p-6 space-y-8 pointer-events-auto bg-black/50 backdrop-blur-sm">
         <h1 className="text-6xl font-black text-cyan-400 title-font tracking-tighter drop-shadow-[0_0_10px_rgba(0,255,255,0.8)] text-center">
           NEON<br/><span className="text-white">LANE</span>
         </h1>
@@ -53,10 +53,10 @@ export const UIOverlay: React.FC<UIProps> = ({
     return (
       <div className="absolute inset-0 pointer-events-none p-4 flex justify-between items-start">
         
-        {/* Left Column: Stats & Info - Transparent Background */}
+        {/* Left Column: Stats & Info - Fully Transparent */}
         <div className="flex flex-col items-start space-y-2 mt-4">
             {/* Score & Distance Block */}
-            <div className="p-3">
+            <div className="p-3 bg-transparent">
                 <div className="text-white font-mono text-4xl font-black leading-none tracking-widest drop-shadow-md text-shadow-black">
                    {String(stats.score).padStart(6, '0')}
                 </div>
@@ -66,14 +66,14 @@ export const UIOverlay: React.FC<UIProps> = ({
             </div>
             
             {/* Secondary Stats */}
-            <div className="p-2 mt-2">
+            <div className="p-2 mt-2 bg-transparent">
                  <div className="text-red-400 font-bold text-lg font-mono text-shadow-black">{stats.dps || 0} DPS</div>
             </div>
         </div>
 
         {/* Right Column: Pause */}
         <div className="flex flex-col items-end pointer-events-auto mt-4">
-            <button onClick={() => onNavigate(GameState.PAUSED)} className="bg-black/20 hover:bg-white/10 p-2 border border-white/20 rounded mb-6 backdrop-blur-sm">
+            <button onClick={() => onNavigate(GameState.PAUSED)} className="bg-transparent hover:bg-white/10 p-2 rounded mb-6 backdrop-blur-sm">
                 <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
