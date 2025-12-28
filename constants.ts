@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.109';
+export const GAME_VERSION = 'V0.0.110';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width
@@ -19,10 +19,10 @@ export const BASE_SCROLL_SPEED = 200;
 export const UNIFIED_ENTITY_SPEED = 350;
 export const CONVERGENCE_Z = 500;
 export const BOSS_APPEAR_DISTANCE = 25000; 
-export const GATE_SPAWN_DISTANCE = 3800; 
+export const GATE_SPAWN_DISTANCE = 4500; // Increased base distance
 
 // Limits & Caps
-export const MAX_PARTICLES = 150; 
+export const MAX_PARTICLES = 250; // Increased for more hit effects
 export const MAX_VISIBLE_SQUAD = 41; // Adjusted for Diamond shape (Centered Square Number: 1, 5, 13, 25, 41)
 export const MAX_PROJECTILES_PER_SHOT = 12; 
 
@@ -71,7 +71,7 @@ export const COLORS = {
   GATE_NEG_BORDER: '#ff0000',
   GATE_NEG_BG: 'rgba(255, 0, 0, 0.15)',
   TEXT: '#ffffff',
-  LANE_LINE: 'rgba(0, 240, 255, 0.4)',
+  LANE_LINE: 'rgba(0, 240, 245, 0.4)',
   LANE_BORDER: '#00f0ff',
   GRID_LINE: 'rgba(0, 240, 255, 0.15)'
 };

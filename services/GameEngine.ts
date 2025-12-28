@@ -8,41 +8,34 @@ import {
 import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types';
 
 export class GameEngine {
-  // State
   public state: GameState = GameState.MENU;
   public entities: Entity[] = [];
   public particles: Entity[] = [];
   public player: Entity;
   
-  // Optimization Buckets
   private enemies: Entity[] = [];
   private bullets: Entity[] = [];
   private pickups: Entity[] = [];
   
-  // Stats
   public score: number = 0;
   public distance: number = 0;
   public wave: number = 1;
   public fps: number = 60;
   public currentPotentialDps: number = 0;
 
-  // Configuration & Modifiers
   public config: GameConfig;
   public playerStats: PlayerStats;
   
-  // Loop internals
   private lastTime: number = 0;
   private accumulator: number = 0;
   private readonly step: number = 1/60;
   private animationFrameId: number | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   
-  // Input
   private inputKeys = { left: false, right: false };
   private touchTargetX: number | null = null;
   private isTouching: boolean = false;
   
-  // Systems
   private spawnTimer: number = 0;
   private lastGateDistance: number = 0;
   private shootTimer: number = 0;
@@ -85,42 +78,22 @@ export class GameEngine {
   private setupInput(canvas: HTMLCanvasElement) {
     const handleMove = (clientX: number) => {
       if (this.state !== GameState.PLAYING) return;
-      
       const rect = canvas.getBoundingClientRect();
       const scaleX = CANVAS_WIDTH / rect.width;
       const canvasX = (clientX - rect.left) * scaleX;
-
       const scale = CAMERA_DEPTH / (PLAYER_Z + CAMERA_DEPTH);
       const screenCX = CANVAS_WIDTH / 2;
       const worldX = (canvasX - screenCX) / scale;
-      
       this.touchTargetX = worldX;
       this.isTouching = true;
     };
+    const handleEnd = () => { this.isTouching = false; this.touchTargetX = null; };
 
-    const handleEnd = () => {
-      this.isTouching = false;
-      this.touchTargetX = null;
-    };
-
-    canvas.addEventListener('touchstart', (e) => {
-      const t = e.changedTouches[0];
-      handleMove(t.clientX); 
-    }, { passive: false });
-    
-    canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      const t = e.changedTouches[0];
-      handleMove(t.clientX);
-    }, { passive: false });
-
+    canvas.addEventListener('touchstart', (e) => handleMove(e.changedTouches[0].clientX), { passive: false });
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.changedTouches[0].clientX); }, { passive: false });
     canvas.addEventListener('touchend', handleEnd);
-    canvas.addEventListener('mousedown', (e) => {
-      if (this.state === GameState.PLAYING) handleMove(e.clientX);
-    });
-    canvas.addEventListener('mousemove', (e) => {
-       if (this.isTouching) handleMove(e.clientX);
-    });
+    canvas.addEventListener('mousedown', (e) => { if (this.state === GameState.PLAYING) handleMove(e.clientX); });
+    canvas.addEventListener('mousemove', (e) => { if (this.isTouching) handleMove(e.clientX); });
     canvas.addEventListener('mouseup', handleEnd);
     canvas.addEventListener('mouseleave', handleEnd);
 
@@ -128,7 +101,6 @@ export class GameEngine {
       if (e.key === 'ArrowLeft' || e.key === 'a') this.inputKeys.left = true;
       if (e.key === 'ArrowRight' || e.key === 'd') this.inputKeys.right = true;
     });
-
     window.addEventListener('keyup', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'a') this.inputKeys.left = false;
       if (e.key === 'ArrowRight' || e.key === 'd') this.inputKeys.right = false;
@@ -141,21 +113,16 @@ export class GameEngine {
     this.enemies = [];
     this.bullets = [];
     this.pickups = [];
-    
     this.score = 0;
     this.distance = 0;
     this.wave = 1;
     this.currentPotentialDps = 0;
     this.invulnerabilityTimer = 0;
-    
-    // Ensure 1 projectile
     this.playerStats.projectileCount = 1;
-
     this.player.active = true;
     this.player.pos.x = 0;
     this.touchTargetX = null;
     this.isTouching = false;
-    
     this.lastGateDistance = 0;
     this.spawnTimer = 2.0;
     this.shootTimer = 0;
@@ -165,16 +132,14 @@ export class GameEngine {
   }
 
   public setGameState(newState: GameState) {
-      this.state = newState;
-      if (newState === GameState.PLAYING) {
-          this.lastTime = performance.now();
-      }
+    this.state = newState;
+    if (newState === GameState.PLAYING) this.lastTime = performance.now();
   }
 
   public start() {
     if (!this.animationFrameId) {
-        this.lastTime = performance.now();
-        this.loop();
+      this.lastTime = performance.now();
+      this.loop();
     }
   }
 
@@ -194,54 +159,46 @@ export class GameEngine {
 
   public stop() {
     if (this.animationFrameId) {
-        cancelAnimationFrame(this.animationFrameId);
-        this.animationFrameId = null;
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
     this.state = GameState.MENU;
   }
 
-  public destroy() {
-    this.stop();
-  }
+  public destroy() { this.stop(); }
 
   private loop = () => {
     const now = performance.now();
     let deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
-
     if (deltaTime > 0.25) deltaTime = 0.25;
 
-    // Only update game logic if playing
     if (this.state === GameState.PLAYING) {
-        this.accumulator += deltaTime;
-        this.fps = Math.round(1 / deltaTime);
-
-        while (this.accumulator >= this.step) {
-            this.update(this.step);
-            this.accumulator -= this.step;
-        }
+      this.accumulator += deltaTime;
+      this.fps = Math.round(1 / deltaTime);
+      while (this.accumulator >= this.step) {
+        this.update(this.step);
+        this.accumulator -= this.step;
+      }
     } else if (this.state === GameState.MENU) {
-        // Idling animation
-        this.gridOffset = (this.gridOffset + (GRID_SPEED * 0.5) * deltaTime) % 200;
-        this.distance += (BASE_SCROLL_SPEED * 0.5) * deltaTime; // Scroll city in menu
-        this.fps = 60;
+      this.gridOffset = (this.gridOffset + (GRID_SPEED * 0.5) * deltaTime) % 200;
+      this.distance += (BASE_SCROLL_SPEED * 0.5) * deltaTime;
     }
 
     this.draw();
     
     if (this.state === GameState.PLAYING) {
-        this.currentPotentialDps = this.playerStats.damage * this.playerStats.projectileCount * this.playerStats.fireRate;
-        this.onUIUpdate({
-            score: Math.floor(this.score),
-            hp: this.playerStats.projectileCount,
-            distance: Math.floor(this.distance),
-            fps: this.fps,
-            state: this.state,
-            activeEntities: this.entities.length,
-            dps: Math.round(this.currentPotentialDps)
-        });
+      this.currentPotentialDps = this.playerStats.damage * this.playerStats.projectileCount * this.playerStats.fireRate;
+      this.onUIUpdate({
+        score: Math.floor(this.score),
+        hp: Math.floor(this.playerStats.projectileCount),
+        distance: Math.floor(this.distance),
+        fps: this.fps,
+        state: this.state,
+        activeEntities: this.entities.length,
+        dps: Math.round(this.currentPotentialDps)
+      });
     }
-
     this.animationFrameId = requestAnimationFrame(this.loop);
   }
 
@@ -259,24 +216,16 @@ export class GameEngine {
   }
 
   private update(dt: number) {
-    if (this.playerStats.projectileCount < 1) {
-      this.endGame();
-      return;
-    }
-
+    if (this.playerStats.projectileCount < 1) { this.endGame(); return; }
     if (this.invulnerabilityTimer > 0) this.invulnerabilityTimer -= dt;
 
-    // World Logic
     const scrollSpeed = BASE_SCROLL_SPEED + (this.wave * 10);
     this.distance += scrollSpeed * dt;
     this.wave = 1 + Math.floor(this.distance / 1500);
-
     this.score += 10 * dt;
     this.gridOffset = (this.gridOffset + GRID_SPEED * dt) % 200;
 
-    // --- PLAYER MOVEMENT ---
     const boundary = (TOTAL_WORLD_WIDTH / 2) - 40;
-
     if (this.isTouching && this.touchTargetX !== null) {
       const diff = this.touchTargetX - this.player.pos.x;
       this.player.pos.x += diff * 15 * dt;
@@ -284,9 +233,7 @@ export class GameEngine {
       if (this.inputKeys.left) this.player.pos.x -= BASE_PLAYER_SPEED * dt;
       if (this.inputKeys.right) this.player.pos.x += BASE_PLAYER_SPEED * dt;
     }
-
-    if (this.player.pos.x < -boundary) this.player.pos.x = -boundary;
-    if (this.player.pos.x > boundary) this.player.pos.x = boundary;
+    this.player.pos.x = Math.max(-boundary, Math.min(boundary, this.player.pos.x));
 
     const laneWidth = WORLD_LANE_WIDTH;
     const totalWidth = LANE_COUNT * laneWidth;
@@ -295,184 +242,115 @@ export class GameEngine {
     const logicalLane = Math.max(0, Math.min(LANE_COUNT - 1, Math.round(exactLane)));
 
     if (this.shakeTimer > 0) this.shakeTimer -= dt;
-
     this.shootTimer -= dt;
     if (this.shootTimer <= 0) {
       this.fireBullet();
       this.shootTimer = 1 / this.playerStats.fireRate;
     }
 
-    if (!this.bossActive) {
-      this.spawnManager(dt);
-    }
+    if (!this.bossActive) this.spawnManager(dt);
 
-    this.enemies = [];
-    this.bullets = [];
-    this.pickups = [];
+    this.enemies = []; this.bullets = []; this.pickups = [];
 
-    // Entity Update
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const ent = this.entities[i];
-      if (!ent.active) {
-        this.entities.splice(i, 1);
-        continue;
-      }
+      if (!ent.active) { this.entities.splice(i, 1); continue; }
+      if (ent.pos.y < -200 || ent.pos.y > SPAWN_Z + 4000) { ent.active = false; continue; }
+      if (ent.type === EntityType.GATE && ent.pos.y < this.player.pos.y - 20) { ent.active = false; continue; }
 
-      // Cleanup logic
-      if (ent.pos.y < -200 || ent.pos.y > SPAWN_Z + 4000) {
-        ent.active = false;
-        continue;
-      }
-
-      // Gate Visiblity: Fade out immediately after player passes
-      if (ent.type === EntityType.GATE && ent.pos.y < this.player.pos.y - 20) {
-          ent.active = false;
-          continue;
-      }
-
-      if (ent.type !== EntityType.BOSS) {
-         if (ent.type === EntityType.BULLET) {
-             if (ent.velocity) {
-                 ent.pos.x += ent.velocity.x * dt;
-                 ent.pos.y += ent.velocity.y * dt;
-             }
-             this.bullets.push(ent);
-         } else if (ent.type === EntityType.PICKUP) {
-             // Move towards player relative speed
-             ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
-             this.pickups.push(ent);
-         } else if (ent.type.startsWith('ENEMY')) {
-             this.enemies.push(ent);
-
-             if (ent.isStuckToPlayer && ent.stickOffset) {
-                 // Stuck logic: adhere to player, damage over time
-                 ent.pos.x = this.player.pos.x + ent.stickOffset.x;
-                 ent.pos.y = this.player.pos.y + ent.stickOffset.y;
-                 
-                 // DoT logic
-                 ent.stuckDamageTimer = (ent.stuckDamageTimer || 0) - dt;
-                 if (ent.stuckDamageTimer <= 0) {
-                     this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
-                     this.createHitEffect(ent.pos, EntityType.PLAYER);
-                     if (this.config.hapticsEnabled) navigator.vibrate(50);
-                     ent.stuckDamageTimer = STUCK_DAMAGE_INTERVAL;
-                 }
-             } else {
-                 // Normal Move
-                 ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
-                 
-                 // Convergence / Meandering
-                 if (ent.pos.y < CONVERGENCE_Z) {
-                     // Instead of centering on player, center on (player + formationOffset)
-                     const targetX = this.player.pos.x + (ent.formationOffset || 0);
-                     const dx = targetX - ent.pos.x;
-                     // Only steer if significant distance
-                     if (Math.abs(dx) > 10) {
-                         ent.pos.x += Math.sign(dx) * 120 * dt; 
-                     }
-                 }
-             }
-         } else {
-             // General entities
-             ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
-         }
+      if (ent.type === EntityType.BULLET) {
+        if (ent.velocity) { ent.pos.x += ent.velocity.x * dt; ent.pos.y += ent.velocity.y * dt; }
+        this.bullets.push(ent);
+      } else if (ent.type === EntityType.PICKUP) {
+        ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
+        this.pickups.push(ent);
+      } else if (ent.type.startsWith('ENEMY')) {
+        this.enemies.push(ent);
+        if (ent.isStuckToPlayer && ent.stickOffset) {
+          ent.pos.x = this.player.pos.x + ent.stickOffset.x;
+          ent.pos.y = this.player.pos.y + ent.stickOffset.y;
+          ent.stuckDamageTimer = (ent.stuckDamageTimer || 0) - dt;
+          if (ent.stuckDamageTimer <= 0) {
+            this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
+            this.createHitEffect(ent.pos, EntityType.PLAYER);
+            if (this.config.hapticsEnabled) navigator.vibrate(50);
+            ent.stuckDamageTimer = STUCK_DAMAGE_INTERVAL;
+          }
+        } else {
+          ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
+          if (ent.pos.y < CONVERGENCE_Z) {
+            const targetX = this.player.pos.x + (ent.formationOffset || 0);
+            const dx = targetX - ent.pos.x;
+            if (Math.abs(dx) > 10) ent.pos.x += Math.sign(dx) * 120 * dt; 
+          }
+        }
+      } else {
+        ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
       }
 
       if (ent.active && ent.type !== EntityType.BULLET) {
-          if (ent.type === EntityType.GATE) {
-             if (ent.lane === logicalLane) {
-                 if (Math.abs(ent.pos.y - this.player.pos.y) < 50) {
-                     this.handlePlayerCollision(ent);
-                 }
-             }
-          } else if (ent.type === EntityType.PICKUP) {
-              if (this.checkCollision(this.player, ent)) {
-                  ent.active = false;
-                  // If player picks up bomb, it explodes at player location
-                  this.applyPickup(ent.pickupType!, this.player.pos);
-              }
-          } else if (ent.type.startsWith('ENEMY') || ent.type === EntityType.OBSTACLE) {
-              this.handleEnemyPlayerInteraction(ent);
+        if (ent.type === EntityType.GATE) {
+          if (ent.lane === logicalLane && Math.abs(ent.pos.y - this.player.pos.y) < 50) {
+            this.handlePlayerCollision(ent);
           }
+        } else if (ent.type === EntityType.PICKUP) {
+          if (this.checkCollision(this.player, ent)) {
+            ent.active = false;
+            this.applyPickup(ent.pickupType!, ent.pos);
+          }
+        } else if (ent.type.startsWith('ENEMY') || ent.type === EntityType.OBSTACLE) {
+          this.handleEnemyPlayerInteraction(ent);
+        }
       }
     }
 
-    // Bullet Collisions
     for (const bullet of this.bullets) {
-        if (!bullet.active) continue;
-        
-        // 1. Check Pickups (Shootable Bombs)
-        for (const pickup of this.pickups) {
-            if (!pickup.active) continue;
-            // Slightly larger hitbox for shooting pickups
-            const zDiff = Math.abs(bullet.pos.y - pickup.pos.y);
-            const dx = Math.abs(bullet.pos.x - pickup.pos.x);
-            if (zDiff < 60 && dx < (bullet.radius + pickup.radius + 20)) {
-                bullet.active = false;
-                pickup.active = false;
-                // Explode AT pickup location
-                this.applyPickup(pickup.pickupType!, pickup.pos);
-                this.createHitEffect(pickup.pos, EntityType.PICKUP);
-                break;
-            }
+      if (!bullet.active) continue;
+      for (const pickup of this.pickups) {
+        if (!pickup.active) continue;
+        const zDiff = Math.abs(bullet.pos.y - pickup.pos.y);
+        const dx = Math.abs(bullet.pos.x - pickup.pos.x);
+        if (zDiff < 60 && dx < (bullet.radius + pickup.radius + 20)) {
+          bullet.active = false; pickup.active = false;
+          this.applyPickup(pickup.pickupType!, pickup.pos);
+          this.createHitEffect(pickup.pos, EntityType.PICKUP);
+          break;
         }
-        if (!bullet.active) continue;
-
-        // 2. Check Enemies
-        let hit = false;
-        
-        // Prioritize stuck enemies for survival
-        const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer && e.active);
-        const normalEnemies = this.enemies.filter(e => !e.isStuckToPlayer && e.active);
-        const checkList = [...stuckEnemies, ...normalEnemies];
-
-        for (const enemy of checkList) {
-            if (!enemy.active) continue;
-            if (Math.abs(bullet.pos.y - enemy.pos.y) > 60) continue;
-            
-            if (this.checkCollision(bullet, enemy)) {
-                bullet.active = false;
-                const dmg = (bullet.damage || 10);
-                enemy.hp -= dmg;
-                
-                // Small splash on every hit
-                this.createHitEffect(enemy.pos, enemy.type, 3);
-
-                if (enemy.hp <= 0) {
-                    enemy.active = false;
-                    // BIG splash on death
-                    this.createHitEffect(enemy.pos, enemy.type, 15);
-                    this.score += (enemy.scoreValue || 10);
-                    if (this.config.hapticsEnabled) navigator.vibrate(10);
-                }
-                hit = true;
-                break; 
-            }
+      }
+      if (!bullet.active) continue;
+      const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer && e.active);
+      const normalEnemies = this.enemies.filter(e => !e.isStuckToPlayer && e.active);
+      const checkList = [...stuckEnemies, ...normalEnemies];
+      for (const enemy of checkList) {
+        if (!enemy.active) continue;
+        if (Math.abs(bullet.pos.y - enemy.pos.y) > 60) continue;
+        if (this.checkCollision(bullet, enemy)) {
+          bullet.active = false;
+          enemy.hp -= (bullet.damage || 10);
+          this.createHitEffect(enemy.pos, enemy.type, 15); // Vivid sparks
+          if (enemy.hp <= 0) {
+            enemy.active = false;
+            this.createHitEffect(enemy.pos, enemy.type, 30); // Explosion level sparks
+            this.score += (enemy.scoreValue || 10);
+            if (this.config.hapticsEnabled) navigator.vibrate(10);
+          }
+          break; 
         }
-        if (hit) continue;
+      }
     }
 
-    if (this.particles.length > MAX_PARTICLES) {
-        this.particles.splice(0, this.particles.length - MAX_PARTICLES);
-    }
+    if (this.particles.length > MAX_PARTICLES) this.particles.splice(0, this.particles.length - MAX_PARTICLES);
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.pos.x += (p.velocity?.x || 0) * dt;
       p.pos.y += (p.velocity?.y || 0) * dt; 
       p.pos.y -= UNIFIED_ENTITY_SPEED * 0.5 * dt; 
-      
-      // Rotation
-      if (p.rotation !== undefined && p.rotationSpeed) {
-        p.rotation += p.rotationSpeed * dt;
-      }
-      
-      // Decay
+      if (p.rotation !== undefined && p.rotationSpeed) p.rotation += p.rotationSpeed * dt;
       if (p.life !== undefined && p.maxLife !== undefined) {
         p.life -= dt;
-        p.radius = (p.life / p.maxLife) * (p.width || 5); // Use width to store original radius
+        p.radius = (p.life / p.maxLife) * (p.width || 5);
         if (p.life <= 0) this.particles.splice(i, 1);
       } else {
-        // Fallback to radius decay
         p.radius -= 10 * dt;
         if (p.radius <= 0) this.particles.splice(i, 1);
       }
@@ -480,894 +358,396 @@ export class GameEngine {
   }
 
   private spawnManager(dt: number) {
-    // 1. GATE Spawning
-    if (this.distance - this.lastGateDistance > GATE_SPAWN_DISTANCE) {
-        this.spawnGateRow();
-        this.lastGateDistance = this.distance;
+    const minSpacing = GATE_SPAWN_DISTANCE + (this.wave * 120);
+    if (this.distance - this.lastGateDistance > minSpacing) {
+      this.spawnGateRow();
+      this.lastGateDistance = this.distance;
     }
-
-    // 2. ENEMY Spawning
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-        const pattern = Math.random();
-        if (pattern < 0.5) this.spawnArmyWave(); 
-        else if (pattern < 0.8) this.spawnEliteWave();
-        else this.spawnSimpleGap();
-        
-        // Ensure delay is always positive and reasonable, regardless of wave
-        const minDelay = 1.0; // Increased from 0.8 to slow down spawns
-        const waveReduct = Math.min(2.0, this.wave * 0.15);
-        this.spawnTimer = Math.max(minDelay, 3.5 - waveReduct);
+      const pattern = Math.random();
+      if (pattern < 0.5) this.spawnArmyWave(); 
+      else if (pattern < 0.8) this.spawnEliteWave();
+      else this.spawnSimpleGap();
+      this.spawnTimer = Math.max(1.0, 3.5 - Math.min(2.0, this.wave * 0.15));
     }
   }
 
   private spawnArmyWave() {
-      const targetLane = Math.floor(Math.random() * LANE_COUNT);
-      const laneX = this.getLaneWorldX(targetLane);
-      const diffMult = this.getDifficultyMultiplier();
-      // Reduced base HP scaling
-      let baseHp = (8 + (this.wave * 3.5)) * diffMult;
-      
-      const effectiveDps = Math.min(this.currentPotentialDps || 0, 100000);
-      let dpsDepthBonus = Math.floor(effectiveDps / 100); 
-      let gridDepth = 5 + dpsDepthBonus + Math.floor(Math.random() * 4); 
-      
-      const MAX_GRID_DEPTH = 30; 
-      if (gridDepth > MAX_GRID_DEPTH) {
-          const scaler = gridDepth / MAX_GRID_DEPTH;
-          baseHp = Math.floor(baseHp * scaler); 
-          gridDepth = MAX_GRID_DEPTH;
+    const targetLane = Math.floor(Math.random() * LANE_COUNT);
+    const laneX = this.getLaneWorldX(targetLane);
+    const diffMult = this.getDifficultyMultiplier();
+    let baseHp = (8 + (this.wave * 3.5)) * diffMult;
+    let gridDepth = Math.min(30, 5 + Math.floor((this.currentPotentialDps || 0) / 100) + Math.floor(Math.random() * 4));
+    const gridWidth = 5;
+    const spacingX = 35; const spacingZ = 40;
+    const startXOffset = -((gridWidth - 1) * spacingX) / 2;
+    let currentZ = SPAWN_Z;
+    if (Math.random() > 0.6) {
+      const type = Math.random() > 0.5 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_TANK;
+      this.spawnEntity(type, laneX, currentZ, type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER, baseHp * 3, 50);
+      currentZ += 150; 
+    }
+    for (let row = 0; row < gridDepth; row++) {
+      for (let col = 0; col < gridWidth; col++) {
+        const x = laneX + startXOffset + (col * spacingX);
+        const z = currentZ + (row * spacingZ);
+        this.spawnEntity(EntityType.ENEMY_GRUNT, x + (Math.random()-0.5)*10, z + (Math.random()-0.5)*10, ENEMY_RADIUS_GRUNT, baseHp, 10);
       }
-      
-      const gridWidth = 5;
-      const spacingX = 35; 
-      const spacingZ = 40; 
-      const startXOffset = -((gridWidth - 1) * spacingX) / 2;
-      let currentZ = SPAWN_Z;
-
-      if (Math.random() > 0.6) {
-          const type = Math.random() > 0.5 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_TANK;
-          const r = type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER;
-          this.spawnEntity(type, laneX, currentZ, r, baseHp * 3, 50);
-          currentZ += 150; 
-      }
-
-      for (let row = 0; row < gridDepth; row++) {
-          for (let col = 0; col < gridWidth; col++) {
-              const x = laneX + startXOffset + (col * spacingX);
-              const z = currentZ + (row * spacingZ);
-              const jitterX = (Math.random() - 0.5) * 10;
-              const jitterZ = (Math.random() - 0.5) * 10;
-              this.spawnEntity(EntityType.ENEMY_GRUNT, x + jitterX, z + jitterZ, ENEMY_RADIUS_GRUNT, baseHp, 10);
-          }
-      }
-      currentZ += (gridDepth * spacingZ) + 100;
-
-      if (Math.random() > 0.6) {
-          const type = Math.random() > 0.5 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_TANK;
-          const r = type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER;
-          this.spawnEntity(type, laneX, currentZ, r, baseHp * 3, 50);
-      }
-      
-      if (Math.random() > 0.6) {
-          const pLane = (targetLane + 1) % LANE_COUNT;
-          this.spawnPickup(pLane, SPAWN_Z);
-      }
+    }
+    if (Math.random() > 0.6) this.spawnPickup((targetLane + 1) % LANE_COUNT, SPAWN_Z);
   }
 
   private spawnEliteWave() {
-      const centerZ = SPAWN_Z;
-      const type = Math.random() > 0.5 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_TANK;
-      const hpMult = type === EntityType.ENEMY_TANK ? 4 : 2;
-      const diffMult = this.getDifficultyMultiplier();
-      const r = type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER;
-      // Reduced Base HP Scaling
-      const baseHp = (8 + (this.wave * 3.5)) * hpMult * diffMult;
-
-      for(let i=0; i<LANE_COUNT; i++) {
-          if (Math.random() > 0.3) {
-             const offsetZ = Math.abs(i - 1) * 200; 
-             this.spawnEntity(type, this.getLaneWorldX(i), centerZ + offsetZ, r, baseHp, 30);
-          }
-      }
+    const type = Math.random() > 0.5 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_TANK;
+    const r = type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER;
+    const baseHp = (8 + (this.wave * 3.5)) * (type === EntityType.ENEMY_TANK ? 4 : 2) * this.getDifficultyMultiplier();
+    for(let i=0; i<LANE_COUNT; i++) if (Math.random() > 0.3) this.spawnEntity(type, this.getLaneWorldX(i), SPAWN_Z + Math.abs(i-1)*200, r, baseHp, 30);
   }
 
   private spawnSimpleGap() {
-      const gapLane = Math.floor(Math.random() * LANE_COUNT);
-      const diffMult = this.getDifficultyMultiplier();
-      // Reduced Base HP Scaling
-      const baseHp = (8 + (this.wave * 3.5)) * diffMult;
-      
-      for(let i=0; i<LANE_COUNT; i++) {
-          if (i === gapLane) continue;
-          const laneX = this.getLaneWorldX(i);
-          this.spawnEntity(EntityType.ENEMY_GRUNT, laneX - 20, SPAWN_Z, ENEMY_RADIUS_GRUNT, baseHp, 10);
-          this.spawnEntity(EntityType.ENEMY_GRUNT, laneX + 20, SPAWN_Z, ENEMY_RADIUS_GRUNT, baseHp, 10);
-          this.spawnEntity(EntityType.ENEMY_GRUNT, laneX - 20, SPAWN_Z + 50, ENEMY_RADIUS_GRUNT, baseHp, 10);
-          this.spawnEntity(EntityType.ENEMY_GRUNT, laneX + 20, SPAWN_Z + 50, ENEMY_RADIUS_GRUNT, baseHp, 10);
-      }
-  }
-
-  private spawnEntity(type: EntityType, x: number, z: number, r: number, hp: number, score: number) {
-      let color = COLORS.ENEMY_GRUNT;
-      if (type === EntityType.ENEMY_SPRINTER) color = COLORS.ENEMY_SPRINTER;
-      if (type === EntityType.ENEMY_TANK) color = COLORS.ENEMY_TANK;
-
-      const formationOffset = (Math.random() - 0.5) * SQUAD_SPREAD_WIDTH;
-
-      this.entities.push({
-          id: Math.random(),
-          type,
-          pos: { x, y: z },
-          radius: r,
-          active: true,
-          hp: hp,
-          maxHp: hp,
-          color,
-          lane: -1,
-          scoreValue: score,
-          formationOffset,
-          stuckDamageTimer: 0
-      });
-  }
-
-  private spawnPickup(laneIndex: number, z: number) {
-     const types = [PickupType.BOMB_SMALL, PickupType.BOMB_MEDIUM, PickupType.BOMB_LARGE, PickupType.CLUSTER];
-     const type = types[Math.floor(Math.random() * types.length)];
-     let color = COLORS.PICKUP_BOMB_SMALL;
-     if (type === PickupType.BOMB_MEDIUM) color = COLORS.PICKUP_BOMB_MEDIUM;
-     if (type === PickupType.BOMB_LARGE) color = COLORS.PICKUP_BOMB_LARGE;
-     if (type === PickupType.CLUSTER) color = COLORS.PICKUP_CLUSTER;
-
-     this.entities.push({
-        id: Math.random(),
-        type: EntityType.PICKUP,
-        pos: { x: this.getLaneWorldX(laneIndex), y: z },
-        radius: 30,
-        active: true,
-        hp: 1,
-        maxHp: 1,
-        color,
-        lane: laneIndex,
-        pickupType: type
-     });
-  }
-
-  private spawnGateRow() {
-     const z = SPAWN_Z;
-     const expectedDps = this.wave * 200;
-     const actualDps = Math.min(this.currentPotentialDps || 200, 100000);
-     const powerRatio = actualDps / expectedDps;
-     
-     let negativeBias = 0.5;
-     if (this.wave <= 1) negativeBias = 0.1; 
-     else {
-         if (powerRatio > 1.2) negativeBias = 0.7; 
-         else if (powerRatio < 0.5) negativeBias = 0.2;
-         else negativeBias = 0.5;
-         if (this.wave > 5) negativeBias = Math.max(negativeBias, 0.4); 
-     }
-
-     const guaranteedGoodLane = Math.floor(Math.random() * LANE_COUNT);
-     const hasOpenLane = Math.random() < 0.2;
-     const openLaneIndex = hasOpenLane ? Math.floor(Math.random() * LANE_COUNT) : -1;
-
-     for (let i = 0; i < LANE_COUNT; i++) {
-        if (i === openLaneIndex) continue;
-        let wantBad = Math.random() < negativeBias;
-        if (i === guaranteedGoodLane && powerRatio < 0.8) wantBad = false;
-
-        const gateType = GateType.PROJECTILES; 
-        let op = Math.random() > 0.6 ? GateOp.MULTIPLY : GateOp.ADD;
-        let value = 0;
-
-        if (op === GateOp.MULTIPLY) {
-            if (wantBad) value = 0.5; 
-            else value = 2; 
-        } else {
-            if (wantBad) value = -(Math.floor(Math.random() * 4) + 2); 
-            else value = Math.floor(Math.random() * 5) + 3;
-        }
-
-        const isBeneficial = (op === GateOp.MULTIPLY && value >= 1) || (op === GateOp.ADD && value >= 0);
-        const color = isBeneficial ? COLORS.GATE_POS_BG : COLORS.GATE_NEG_BG;
-        
-        this.entities.push({
-            id: Math.random(),
-            type: EntityType.GATE,
-            pos: { x: this.getLaneWorldX(i), y: z },
-            radius: 40,
-            active: true,
-            hp: 1,
-            maxHp: 1,
-            color: color,
-            lane: i,
-            gateData: { type: gateType, op: op, value: value },
-            width: WORLD_LANE_WIDTH - 20,
-            height: GATE_HEIGHT
-        });
-     }
-  }
-
-  private checkCollision(a: Entity, b: Entity): boolean {
-      const zDiff = Math.abs(a.pos.y - b.pos.y);
-      if (zDiff > 60) return false;
-      const dx = a.pos.x - b.pos.x;
-      const radiusSum = a.radius + b.radius;
-      return Math.abs(dx) < radiusSum;
-  }
-
-  private handlePlayerCollision(ent: Entity) {
-    if (ent.type === EntityType.GATE) {
-       ent.active = false;
-       this.applyGateBonus(ent.gateData!);
-       this.createHitEffect(this.player.pos, EntityType.PLAYER);
-       if (this.config.hapticsEnabled) navigator.vibrate(20);
-    } else {
-       if (this.checkCollision(this.player, ent)) {
-           if (ent.type === EntityType.PICKUP) {
-               ent.active = false;
-               this.applyPickup(ent.pickupType!, ent.pos);
-           }
-       }
+    const gapLane = Math.floor(Math.random() * LANE_COUNT);
+    const baseHp = (8 + (this.wave * 3.5)) * this.getDifficultyMultiplier();
+    for(let i=0; i<LANE_COUNT; i++) {
+      if (i === gapLane) continue;
+      const x = this.getLaneWorldX(i);
+      this.spawnEntity(EntityType.ENEMY_GRUNT, x - 20, SPAWN_Z, ENEMY_RADIUS_GRUNT, baseHp, 10);
+      this.spawnEntity(EntityType.ENEMY_GRUNT, x + 20, SPAWN_Z, ENEMY_RADIUS_GRUNT, baseHp, 10);
     }
   }
 
+  private spawnEntity(type: EntityType, x: number, z: number, r: number, hp: number, score: number) {
+    let color = COLORS.ENEMY_GRUNT;
+    if (type === EntityType.ENEMY_SPRINTER) color = COLORS.ENEMY_SPRINTER;
+    if (type === EntityType.ENEMY_TANK) color = COLORS.ENEMY_TANK;
+    this.entities.push({
+      id: Math.random(), type, pos: { x, y: z }, radius: r, active: true, hp, maxHp: hp, color, lane: -1, scoreValue: score,
+      formationOffset: (Math.random() - 0.5) * SQUAD_SPREAD_WIDTH, stuckDamageTimer: 0
+    });
+  }
+
+  private spawnPickup(laneIndex: number, z: number) {
+    const types = [PickupType.BOMB_SMALL, PickupType.BOMB_MEDIUM, PickupType.BOMB_LARGE, PickupType.CLUSTER];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const colors = [COLORS.PICKUP_BOMB_SMALL, COLORS.PICKUP_BOMB_MEDIUM, COLORS.PICKUP_BOMB_LARGE, COLORS.PICKUP_CLUSTER];
+    this.entities.push({
+      id: Math.random(), type: EntityType.PICKUP, pos: { x: this.getLaneWorldX(laneIndex), y: z }, radius: 30, active: true, hp: 1, maxHp: 1,
+      color: colors[types.indexOf(type)], lane: laneIndex, pickupType: type
+    });
+  }
+
+  private spawnGateRow() {
+    const dps = this.currentPotentialDps || 200;
+    const powerRatio = dps / (this.wave * 200);
+    let negBias = 0.5;
+    if (dps > 1_000_000) negBias = 0.95; 
+    else if (dps > 500_000) negBias = 0.85; 
+    else if (this.wave <= 1) negBias = 0.1;
+    else negBias = (powerRatio > 1.2 ? 0.7 : (powerRatio < 0.5 ? 0.2 : 0.5));
+
+    const goodLane = Math.floor(Math.random() * LANE_COUNT);
+    for (let i = 0; i < LANE_COUNT; i++) {
+      if (Math.random() < 0.2) continue; 
+      let bad = Math.random() < negBias; 
+      if (i === goodLane && powerRatio < 0.8) bad = false;
+      const op = Math.random() > 0.6 ? GateOp.MULTIPLY : GateOp.ADD;
+      let val = 0;
+      if (bad) {
+        if (dps > 1_000_000) val = op === GateOp.MULTIPLY ? 0.1 : -5000;
+        else if (dps > 500_000) val = op === GateOp.MULTIPLY ? 0.25 : -1000;
+        else val = op === GateOp.MULTIPLY ? 0.5 : -(Math.floor(Math.random()*4)+2);
+      } else {
+        val = op === GateOp.MULTIPLY ? 2 : (Math.floor(Math.random()*5)+3);
+      }
+      const beneficial = (op === GateOp.MULTIPLY && val >= 1) || (op === GateOp.ADD && val >= 0);
+      this.entities.push({
+        id: Math.random(), type: EntityType.GATE, pos: { x: this.getLaneWorldX(i), y: SPAWN_Z }, radius: 40, active: true, hp: 1, maxHp: 1,
+        color: beneficial ? COLORS.GATE_POS_BG : COLORS.GATE_NEG_BG, lane: i, gateData: { type: GateType.PROJECTILES, op, value: val }, width: WORLD_LANE_WIDTH-20, height: GATE_HEIGHT
+      });
+    }
+  }
+
+  private checkCollision(a: Entity, b: Entity): boolean {
+    const zDiff = Math.abs(a.pos.y - b.pos.y);
+    if (zDiff > 60) return false;
+    const dx = a.pos.x - b.pos.x;
+    return Math.abs(dx) < (a.radius + b.radius);
+  }
+
+  private handlePlayerCollision(ent: Entity) {
+    ent.active = false;
+    if (ent.type === EntityType.GATE) this.applyGateBonus(ent.gateData!);
+    else if (ent.type === EntityType.PICKUP) this.applyPickup(ent.pickupType!, ent.pos);
+    this.createHitEffect(this.player.pos, EntityType.PLAYER);
+    if (this.config.hapticsEnabled) navigator.vibrate(20);
+  }
+
   private handleEnemyPlayerInteraction(ent: Entity) {
-    if (ent.isStuckToPlayer) return; // Already stuck
-
-    if (!ent.isAttacking && this.checkCollision(this.player, ent)) {
-        // Stick logic
-        ent.isStuckToPlayer = true;
-        
-        const offX = ent.pos.x - this.player.pos.x;
-        const offY = ent.pos.y - this.player.pos.y;
-        ent.stickOffset = { x: offX, y: offY };
-        ent.stuckDamageTimer = 0; 
-
-        if (this.config.hapticsEnabled) navigator.vibrate(20);
+    if (ent.isStuckToPlayer || ent.isAttacking) return;
+    if (this.checkCollision(this.player, ent)) {
+      ent.isStuckToPlayer = true;
+      ent.stickOffset = { x: ent.pos.x - this.player.pos.x, y: ent.pos.y - this.player.pos.y };
+      ent.stuckDamageTimer = 0; 
+      if (this.config.hapticsEnabled) navigator.vibrate(20);
     }
   }
 
   private applyGateBonus(data: GateData) {
-      const val = data.value;
-      const isMult = data.op === GateOp.MULTIPLY;
-      let newCount = this.playerStats.projectileCount;
-      if (isMult) newCount = Math.floor(newCount * val);
-      else newCount += val;
-      this.playerStats.projectileCount = Math.max(0, newCount); 
+    const val = data.value;
+    let count = this.playerStats.projectileCount;
+    if (data.op === GateOp.MULTIPLY) count = Math.floor(count * val); else count += val;
+    this.playerStats.projectileCount = Math.max(0, count);
   }
 
   private applyPickup(type: PickupType, origin: Vector2) {
-    if (this.config.hapticsEnabled) navigator.vibrate(50);
-    
-    // New Sizes
-    let radius = 0;
-    let color = '#fff';
-    
-    switch (type) {
-        case PickupType.BOMB_SMALL:
-            radius = 400;
-            color = COLORS.PICKUP_BOMB_SMALL;
-            break;
-        case PickupType.BOMB_MEDIUM:
-            radius = 800;
-            color = COLORS.PICKUP_BOMB_MEDIUM;
-            break;
-        case PickupType.BOMB_LARGE:
-            radius = 1200;
-            color = COLORS.PICKUP_BOMB_LARGE;
-            break;
-        case PickupType.CLUSTER:
-            radius = 2000; 
-            color = COLORS.PICKUP_CLUSTER;
-            break;
-    }
-
-    if (type === PickupType.CLUSTER) {
-        this.entities.forEach(e => {
-            if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z) {
-                const dist = Math.abs(e.pos.y - origin.y);
-                const dx = Math.abs(e.pos.x - origin.x);
-                if (dist < 1200 && dx < 400) { 
-                    e.active = false;
-                    e.hp = 0;
-                    this.createHitEffect(e.pos, e.type, 20);
-                    this.score += (e.scoreValue || 10);
-                }
-            }
-        });
-        this.createHitEffect({x:0, y:300}, EntityType.PARTICLE, 40, color);
-    } else {
-        this.entities.forEach(e => {
-            if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z && e.pos.y > -200) {
-                 const dx = e.pos.x - origin.x;
-                 const dy = e.pos.y - origin.y;
-                 const dist = Math.sqrt(dx*dx + dy*dy);
-                 
-                 if (dist < radius) {
-                    e.active = false;
-                    e.hp = 0;
-                    this.createHitEffect(e.pos, e.type, 15);
-                    this.score += (e.scoreValue || 10);
-                 }
-            }
-        });
-        this.createHitEffect(origin, EntityType.PARTICLE, 30, color);
-    }
+    let radius = type === PickupType.BOMB_SMALL ? 400 : (type === PickupType.BOMB_MEDIUM ? 800 : (type === PickupType.BOMB_LARGE ? 1200 : 2000));
+    let color = type === PickupType.BOMB_SMALL ? COLORS.PICKUP_BOMB_SMALL : (type === PickupType.BOMB_MEDIUM ? COLORS.PICKUP_BOMB_MEDIUM : (type === PickupType.BOMB_LARGE ? COLORS.PICKUP_BOMB_LARGE : COLORS.PICKUP_CLUSTER));
+    this.entities.forEach(e => {
+      if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z) {
+        const dx = e.pos.x - origin.x; const dy = e.pos.y - origin.y;
+        if (Math.sqrt(dx*dx + dy*dy) < radius) {
+          e.active = false; e.hp = 0;
+          this.createHitEffect(e.pos, e.type, 20);
+          this.score += (e.scoreValue || 10);
+        }
+      }
+    });
+    this.createHitEffect(origin, EntityType.PARTICLE, 40, color);
     this.shakeTimer = 0.5;
+    if (this.config.hapticsEnabled) navigator.vibrate(50);
   }
 
   private createHitEffect(pos: Vector2, sourceType: EntityType, countOverride?: number, colorOverride?: string) {
-    let count = countOverride || 5;
+    let count = countOverride || 5; 
     if (this.config.reducedEffects) count = Math.ceil(count / 2);
+    let color = colorOverride || '#fff'; let shape = ParticleShape.CIRCLE;
+    if (sourceType === EntityType.ENEMY_GRUNT) color = COLORS.ENEMY_GRUNT;
+    else if (sourceType === EntityType.ENEMY_SPRINTER) { color = COLORS.ENEMY_SPRINTER; shape = ParticleShape.CIRCLE; }
+    else if (sourceType === EntityType.ENEMY_TANK) { color = COLORS.ENEMY_TANK; shape = ParticleShape.CIRCLE; }
+    else if (sourceType === EntityType.PLAYER) { color = COLORS.PLAYER; shape = ParticleShape.RING; }
     
-    let color = colorOverride || '#fff';
-    let shape = ParticleShape.CIRCLE;
-    let speedMult = 1.0;
-    let life = 0.5;
-
-    switch (sourceType) {
-        case EntityType.ENEMY_GRUNT:
-            color = COLORS.ENEMY_GRUNT;
-            shape = ParticleShape.CIRCLE;
-            break;
-        case EntityType.ENEMY_SPRINTER:
-            color = COLORS.ENEMY_SPRINTER;
-            shape = ParticleShape.LINE;
-            speedMult = 1.8;
-            life = 0.3;
-            break;
-        case EntityType.ENEMY_TANK:
-            color = COLORS.ENEMY_TANK;
-            shape = ParticleShape.SQUARE;
-            speedMult = 0.6;
-            life = 0.8;
-            break;
-        case EntityType.PLAYER:
-            color = COLORS.PLAYER;
-            shape = ParticleShape.RING;
-            break;
-        case EntityType.PICKUP:
-            shape = ParticleShape.RING;
-            life = 0.7;
-            break;
-    }
-
     for(let i=0; i<count; i++) {
-       const angle = Math.random() * Math.PI * 2;
-       const speed = (200 + Math.random() * 400) * speedMult;
-       
+       const angle = Math.random()*Math.PI*2; const speed = 300 + Math.random()*500;
        this.particles.push({
-         id: Math.random(),
-         type: EntityType.PARTICLE,
-         pos: {x: pos.x, y: pos.y},
-         radius: Math.random() * 4 + 2,
-         width: Math.random() * 4 + 2, // Store initial radius here
-         active: true,
-         hp: 1,
-         maxHp: 1,
-         color: color,
-         lane: -1,
-         particleShape: shape,
-         velocity: {
-            x: Math.cos(angle) * speed,
-            y: Math.sin(angle) * speed
-         },
-         life: life,
-         maxLife: life,
-         rotation: Math.random() * Math.PI,
-         rotationSpeed: (Math.random() - 0.5) * 10
+         id: Math.random(), type: EntityType.PARTICLE, pos: {x: pos.x, y: pos.y}, radius: Math.random()*5+3, width: Math.random()*5+3,
+         active: true, hp: 1, maxHp: 1, color, lane: -1, particleShape: shape, velocity: { x: Math.cos(angle)*speed, y: Math.sin(angle)*speed },
+         life: 0.6, maxLife: 0.6, rotation: Math.random()*Math.PI, rotationSpeed: (Math.random()-0.5)*12
        });
     }
   }
 
   private findAutoAimTarget(): Entity | null {
-    const stuck = this.enemies.find(e => e.active && e.isStuckToPlayer);
-    if (stuck) return stuck;
-
-    // 1. Check for DIRECT line of sight to a PICKUP (Bomb)
-    // Tolerance for "lining up"
-    const xTolerance = 60; 
-    
-    // Sort pickups by distance (closest first)
-    const sortedPickups = this.pickups
-        .filter(p => p.active && p.pos.y > this.player.pos.y)
-        .sort((a,b) => a.pos.y - b.pos.y);
-
+    const stuck = this.enemies.find(e => e.active && e.isStuckToPlayer); if (stuck) return stuck;
+    const sortedPickups = this.pickups.filter(p => p.active && p.pos.y > this.player.pos.y).sort((a,b) => a.pos.y - b.pos.y);
     for (const pickup of sortedPickups) {
-        // Is player aligned?
-        if (Math.abs(pickup.pos.x - this.player.pos.x) < xTolerance) {
-             // Check if blocked by enemy
-             let blocked = false;
-             for (const enemy of this.enemies) {
-                 if (!enemy.active) continue;
-                 // Enemy must be between player and pickup
-                 if (enemy.pos.y > this.player.pos.y && enemy.pos.y < pickup.pos.y) {
-                     // Check X overlap
-                     if (Math.abs(enemy.pos.x - this.player.pos.x) < (enemy.radius + BULLET_RADIUS + 10)) {
-                         blocked = true;
-                         break;
-                     }
-                 }
-             }
-             if (!blocked) {
-                 return pickup; // Prioritize this bomb!
-             }
-        }
+      if (Math.abs(pickup.pos.x - this.player.pos.x) < 60) {
+        if (!this.enemies.some(e => e.active && e.pos.y > this.player.pos.y && e.pos.y < pickup.pos.y && Math.abs(e.pos.x - this.player.pos.x) < (e.radius + 15))) return pickup;
+      }
     }
-
-    // 2. Standard Enemy Auto-Aim
-    let nearest: Entity | null = null;
-    let minSqDist = Infinity;
-    const maxAngle = 10 * (Math.PI / 180); 
-
+    let nearest: Entity | null = null; let minSq = Infinity;
     for (const ent of this.enemies) {
-        if (!ent.active) continue;
-        if (ent.pos.y <= this.player.pos.y) continue;
-        const dx = ent.pos.x - this.player.pos.x;
-        const dy = ent.pos.y - this.player.pos.y;
-        const angle = Math.atan2(dx, dy); 
-        if (Math.abs(angle) <= maxAngle) {
-            const sqDist = dx*dx + dy*dy;
-            if (sqDist < minSqDist) {
-                minSqDist = sqDist;
-                nearest = ent;
-            }
-        }
+      if (!ent.active || ent.pos.y <= this.player.pos.y) continue;
+      const dx = ent.pos.x - this.player.pos.x; const dy = ent.pos.y - this.player.pos.y;
+      if (Math.abs(Math.atan2(dx, dy)) <= (10 * Math.PI/180)) {
+        const sq = dx*dx + dy*dy; if (sq < minSq) { minSq = sq; nearest = ent; }
+      }
     }
     return nearest;
   }
 
   private fireBullet() {
-    const rawCount = Math.max(1, Math.floor(this.playerStats.projectileCount));
-    const actualBulletCount = Math.min(rawCount, MAX_PROJECTILES_PER_SHOT);
-    const damageMultiplier = rawCount / actualBulletCount;
-    const bulletDamage = this.playerStats.damage * damageMultiplier;
-    
-    const intensityScore = bulletDamage / 20; 
-    const tier = Math.min(BULLET_COLORS.length - 1, Math.floor(intensityScore));
-    const bulletColor = BULLET_COLORS[tier];
-    const bulletRadius = BULLET_RADIUS + Math.min(5, tier);
-
-    const offsets = this.getSquadOffsets(actualBulletCount);
+    const raw = Math.floor(this.playerStats.projectileCount);
+    const count = Math.min(raw, MAX_PROJECTILES_PER_SHOT);
+    const dmg = this.playerStats.damage * (raw / count);
+    const tier = Math.min(BULLET_COLORS.length - 1, Math.floor(dmg / 20));
+    const offsets = this.getSquadOffsets(count);
     const target = this.findAutoAimTarget();
-    const speed = 1800;
-
-    const maxSpread = MAX_SPREAD_ANGLE_DEG * (Math.PI / 180);
-    const spreadFactor = Math.min(1.0, actualBulletCount / 10);
-    const currentSpread = maxSpread * spreadFactor;
-    
+    const spread = MAX_SPREAD_ANGLE_DEG * (Math.PI/180) * Math.min(1.0, count/10);
     for (let i = 0; i < offsets.length; i++) {
-        const off = offsets[i];
-        
-        // Base Direction
-        let dirX = 0; 
-        let dirY = 1;
-
-        if (target) {
-            const startX = this.player.pos.x + off.x;
-            const startY = this.player.pos.y + off.y;
-            const dx = target.pos.x - startX;
-            const dy = target.pos.y - startY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist > 0) {
-                dirX = dx/dist;
-                dirY = dy/dist;
-            }
-        }
-
-        let angleOffset = 0;
-        if (actualBulletCount > 1 && !target) { // Only spread if not locked on target? Or spread around target vector?
-            // Currently spreading around base vector (straight or target)
-            const step = currentSpread / (actualBulletCount - 1);
-            angleOffset = -currentSpread/2 + (i * step);
-        }
-
-        const cos = Math.cos(angleOffset);
-        const sin = Math.sin(angleOffset);
-        
-        const finalDirX = dirX * cos - dirY * sin;
-        const finalDirY = dirX * sin + dirY * cos;
-
-        this.entities.push({
-            id: Math.random(),
-            type: EntityType.BULLET,
-            pos: { x: this.player.pos.x + off.x, y: this.player.pos.y + off.y },
-            radius: bulletRadius,
-            active: true,
-            hp: 1,
-            maxHp: 1,
-            color: bulletColor,
-            lane: -1,
-            damage: bulletDamage,
-            velocity: { x: finalDirX * speed, y: finalDirY * speed }
-        });
+      let dirX = 0; let dirY = 1;
+      if (target) {
+        const dx = target.pos.x - (this.player.pos.x + offsets[i].x);
+        const dy = target.pos.y - (this.player.pos.y + offsets[i].y);
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > 0) { dirX = dx/dist; dirY = dy/dist; }
+      }
+      const angle = (count > 1 && !target) ? (-spread/2 + (i * (spread/(count-1)))) : 0;
+      const cos = Math.cos(angle); const sin = Math.sin(angle);
+      this.entities.push({
+        id: Math.random(), type: EntityType.BULLET, pos: { x: this.player.pos.x + offsets[i].x, y: this.player.pos.y + offsets[i].y },
+        radius: BULLET_RADIUS + Math.min(5, tier), active: true, hp: 1, maxHp: 1, color: BULLET_COLORS[tier], lane: -1, damage: dmg,
+        velocity: { x: (dirX*cos - dirY*sin)*1800, y: (dirX*sin + dirY*cos)*1800 }
+      });
     }
   }
 
   private getSquadOffsets(count: number): Vector2[] {
-      const offsets: Vector2[] = [];
-      offsets.push({x:0, y:0}); // Center
-      if (count <= 1) return offsets;
-
-      const spacing = 18;
-      let layer = 1;
-      while (offsets.length < count) {
-          // Add all points with Manhattan distance == layer
-          for (let x = -layer; x <= layer; x++) {
-              const yAbs = layer - Math.abs(x);
-              // Two y values: +yAbs and -yAbs. If yAbs is 0, only one.
-              if (yAbs === 0) {
-                  offsets.push({x: x * spacing, y: 0});
-              } else {
-                  offsets.push({x: x * spacing, y: yAbs * spacing});
-                  offsets.push({x: x * spacing, y: -yAbs * spacing});
-              }
-              if (offsets.length >= count) break;
-          }
-          layer++;
+    const offsets: Vector2[] = [{x:0, y:0}];
+    if (count <= 1) return offsets;
+    const spacing = 18; let layer = 1;
+    while (offsets.length < count) {
+      for (let x = -layer; x <= layer; x++) {
+        const yAbs = layer - Math.abs(x);
+        if (yAbs === 0) offsets.push({x: x * spacing, y: 0});
+        else { offsets.push({x: x * spacing, y: yAbs * spacing}); offsets.push({x: x * spacing, y: -yAbs * spacing}); }
+        if (offsets.length >= count) break;
       }
-      return offsets;
+      layer++;
+    }
+    return offsets;
   }
 
-  private endGame() {
-    this.state = GameState.GAME_OVER;
-    this.onUIUpdate({ state: this.state });
-  }
+  private endGame() { this.state = GameState.GAME_OVER; this.onUIUpdate({ state: this.state }); }
 
   private project(p: Vector2): { x: number, y: number, scale: number, visible: boolean } {
-      const z = p.y; 
-      if (z < -200 || z > DRAW_DISTANCE + 1000) return { x:0, y:0, scale:0, visible: false };
-
-      const x = p.x;
-      const scale = CAMERA_DEPTH / (z + CAMERA_DEPTH);
-
-      const screenCX = CANVAS_WIDTH / 2;
-      const projX = screenCX + (x * scale);
-      
-      const bottomY = CANVAS_HEIGHT - VIEWPORT_BOTTOM_OFFSET; 
-      const topY = HORIZON_Y;
-      
-      const finalY = topY + (scale * (bottomY - topY));
-      
-      return { x: projX, y: finalY, scale, visible: true };
+    const z = p.y; if (z < -200 || z > DRAW_DISTANCE + 1000) return { x:0, y:0, scale:0, visible: false };
+    const scale = CAMERA_DEPTH / (z + CAMERA_DEPTH);
+    const bottomY = CANVAS_HEIGHT - VIEWPORT_BOTTOM_OFFSET;
+    return { x: (CANVAS_WIDTH/2) + (p.x * scale), y: HORIZON_Y + (scale * (bottomY - HORIZON_Y)), scale, visible: true };
   }
 
   private draw() {
     if (!this.ctx) return;
-    const ctx = this.ctx;
-    
-    ctx.fillStyle = '#050505';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    let offsetX = 0; let offsetY = 0;
-    if (this.shakeTimer > 0) {
-      offsetX = (Math.random() - 0.5) * 15;
-      offsetY = (Math.random() - 0.5) * 15;
-    }
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-
-    // DRAW CITYSCAPE (Background)
+    const ctx = this.ctx; ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.save(); if (this.shakeTimer > 0) ctx.translate((Math.random()-0.5)*15, (Math.random()-0.5)*15);
     this.drawCityscape(ctx);
-
     this.drawGrid(ctx);
-
-    const trackLeftX = this.getLaneWorldX(0) - (WORLD_LANE_WIDTH / 2);
-    const trackRightX = this.getLaneWorldX(LANE_COUNT - 1) + (WORLD_LANE_WIDTH / 2);
-
-    const pConvLeft = this.project({ x: trackLeftX, y: CONVERGENCE_Z });
-    const pConvRight = this.project({ x: trackRightX, y: CONVERGENCE_Z });
-
-    if (pConvLeft.visible) {
-        ctx.strokeStyle = COLORS.LANE_BORDER; 
-        ctx.lineWidth = 2;
-        ctx.setLineDash([15, 15]);
-        ctx.beginPath();
-        ctx.moveTo(pConvLeft.x, pConvLeft.y);
-        ctx.lineTo(pConvRight.x, pConvRight.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-    }
-
-    ctx.lineWidth = 2;
-    // EXTENDED DRAW DISTANCE for Lanes
-    const drawDist = DRAW_DISTANCE; 
+    const pL = this.project({ x: this.getLaneWorldX(0) - 100, y: CONVERGENCE_Z });
+    const pR = this.project({ x: this.getLaneWorldX(LANE_COUNT-1) + 100, y: CONVERGENCE_Z });
+    if (pL.visible) { ctx.strokeStyle = COLORS.LANE_BORDER; ctx.lineWidth = 2; ctx.setLineDash([15, 15]); ctx.beginPath(); ctx.moveTo(pL.x, pL.y); ctx.lineTo(pR.x, pR.y); ctx.stroke(); ctx.setLineDash([]); }
     for (let i = 0; i <= LANE_COUNT; i++) {
-        const lx = this.getLaneWorldX(0) - (WORLD_LANE_WIDTH/2) + (i * WORLD_LANE_WIDTH);
-        
-        const isBorder = i === 0 || i === LANE_COUNT;
-        const startZ = isBorder ? PLAYER_Z : CONVERGENCE_Z;
-        
-        const pStart = this.project({ x: lx, y: startZ });
-        const pEnd = this.project({ x: lx, y: drawDist });
-        
-        if (pStart.visible || pEnd.visible) {
-             ctx.strokeStyle = isBorder ? COLORS.LANE_BORDER : COLORS.LANE_LINE;
-             ctx.beginPath();
-             ctx.moveTo(pStart.x, pStart.y);
-             ctx.lineTo(pEnd.x, pEnd.y);
-             ctx.stroke();
-        }
+      const lx = this.getLaneWorldX(0) - 100 + (i * 200); const isB = i === 0 || i === LANE_COUNT;
+      const pS = this.project({ x: lx, y: isB ? PLAYER_Z : CONVERGENCE_Z }); const pE = this.project({ x: lx, y: DRAW_DISTANCE });
+      if (pS.visible || pE.visible) { ctx.strokeStyle = isB ? COLORS.LANE_BORDER : COLORS.LANE_LINE; ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); }
     }
-
-    const allEnts = [...this.entities, ...this.particles];
-    allEnts.sort((a,b) => b.pos.y - a.pos.y);
-    
-    for (const ent of allEnts) {
-        if (!ent.active) continue;
-        const proj = this.project(ent.pos);
-        if (!proj.visible) continue;
-
-        if (ent.type === EntityType.GATE) this.drawGate(ctx, ent, proj);
-        else if (ent.type === EntityType.PARTICLE) this.drawParticle(ctx, ent, proj);
-        else this.drawEntity(ctx, ent, proj);
+    const all = [...this.entities, ...this.particles].sort((a,b) => b.pos.y - a.pos.y);
+    for (const ent of all) {
+      if (!ent.active) continue; const proj = this.project(ent.pos); if (!proj.visible) continue;
+      if (ent.type === EntityType.GATE) this.drawGate(ctx, ent, proj);
+      else if (ent.type === EntityType.PARTICLE) this.drawParticle(ctx, ent, proj);
+      else this.drawEntity(ctx, ent, proj);
     }
-
-    if (this.invulnerabilityTimer <= 0 || Math.floor(performance.now() / 50) % 2 === 0) {
-      this.drawPlayerSquad(ctx);
-    }
-
+    if (this.invulnerabilityTimer <= 0 || Math.floor(performance.now()/50)%2 === 0) this.drawPlayerSquad(ctx);
     ctx.restore();
   }
 
-  // --- CITYSCAPE RENDERING ---
-  // Deterministic rendering based on distance, no entities required.
   private drawCityscape(ctx: CanvasRenderingContext2D) {
-      const farClip = DRAW_DISTANCE + 1000;
-      const nearClip = -200;
-      
-      const startIndex = Math.floor((this.distance + nearClip) / CITY_BLOCK_SIZE);
-      const endIndex = Math.floor((this.distance + farClip) / CITY_BLOCK_SIZE);
-
-      // Render Back to Front
-      for(let i = endIndex; i >= startIndex; i--) {
-          const zBase = (i * CITY_BLOCK_SIZE) - this.distance;
-          
-          // Left and Right sides
-          this.drawBuilding(ctx, i, -1, zBase); // Left
-          this.drawBuilding(ctx, i, 1, zBase);  // Right
-      }
+    const start = Math.floor((this.distance - 200) / CITY_BLOCK_SIZE);
+    const end = Math.floor((this.distance + DRAW_DISTANCE + 1000) / CITY_BLOCK_SIZE);
+    for(let i = end; i >= start; i--) {
+      const z = (i * CITY_BLOCK_SIZE) - this.distance;
+      this.drawBuilding(ctx, i, -1, z); this.drawBuilding(ctx, i, 1, z);
+    }
   }
 
   private drawBuilding(ctx: CanvasRenderingContext2D, index: number, side: number, zCenter: number) {
-      const depth = 800; // Fixed depth for uniformity or variable
-      const zFront = zCenter - depth/2;
-      const zBack = zCenter + depth/2;
-      
-      // Don't draw if behind camera significantly or too far
-      if (zFront > DRAW_DISTANCE + 1000 || zBack < -200) return;
-
-      const x = side * CITY_STREET_WIDTH;
-      
-      // Project Base Points (Ground)
-      const pFrontBase = this.project({x, y: zFront});
-      const pBackBase = this.project({x, y: zBack});
-      
-      if (!pFrontBase.visible && !pBackBase.visible) return;
-
-      // Calculate Heights (screen space)
-      // Height varies more randomly
-      const seed = Math.abs((index * 9301 + side * 49291) % 10000);
-      const h = 800 + (seed % 1200) + (Math.sin(index) * 200);
-      
-      const frontH = h * pFrontBase.scale;
-      const backH = h * pBackBase.scale;
-      
-      const yFrontTop = pFrontBase.y - frontH;
-      const yBackTop = pBackBase.y - backH;
-      
-      // Draw path for the side wall
-      ctx.beginPath();
-      ctx.moveTo(pFrontBase.x, pFrontBase.y);
-      ctx.lineTo(pBackBase.x, pBackBase.y);
-      ctx.lineTo(pBackBase.x, yBackTop);
-      ctx.lineTo(pFrontBase.x, yFrontTop);
-      ctx.closePath();
-      
-      // Style
-      const colors = ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'];
-      const color = colors[index % colors.length];
-      
-      ctx.fillStyle = color + '11'; // Low alpha fill
-      ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      // Add simple internal "Tron" line (horizontal mid)
-      const midYFront = pFrontBase.y - (frontH * 0.5);
-      const midYBack = pBackBase.y - (backH * 0.5);
-      
-      ctx.beginPath();
-      ctx.moveTo(pFrontBase.x, midYFront);
-      ctx.lineTo(pBackBase.x, midYBack);
-      ctx.strokeStyle = color + '66';
-      ctx.stroke();
+    const seed = Math.abs((index * 9301 + side * 49291) % 10000);
+    const bWidth = 100 + (seed % 200); 
+    const bHeight = 150 + (seed % 300) + (Math.sin(index) * 50); 
+    const zF = Math.max(-CAMERA_DEPTH + 100, zCenter - 400); 
+    const zB = Math.max(-CAMERA_DEPTH + 100, zCenter + 400);
+    if (zF > DRAW_DISTANCE + 1000 || zB < -200) return;
+    const xInner = side * CITY_STREET_WIDTH;
+    const xOuter = xInner + (side * bWidth);
+    const pFI = this.project({x: xInner, y: zF}); 
+    const pBI = this.project({x: xInner, y: zB});
+    const pFO = this.project({x: xOuter, y: zF});
+    const pBO = this.project({x: xOuter, y: zB});
+    if (!pFI.visible || !pBI.visible || !pFO.visible || !pBO.visible) return;
+    const color = ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'][index % 4];
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color + '11';
+    ctx.beginPath();
+    ctx.moveTo(pFI.x, pFI.y - bHeight * pFI.scale);
+    ctx.lineTo(pBI.x, pBI.y - bHeight * pBI.scale);
+    ctx.lineTo(pBO.x, pBO.y - bHeight * pBO.scale);
+    ctx.lineTo(pFO.x, pFO.y - bHeight * pFO.scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pFI.x, pFI.y);
+    ctx.lineTo(pBI.x, pBI.y);
+    ctx.lineTo(pBI.x, pBI.y - bHeight * pBI.scale);
+    ctx.lineTo(pFI.x, pFI.y - bHeight * pFI.scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
 
   private drawGrid(ctx: CanvasRenderingContext2D) {
-      ctx.strokeStyle = COLORS.GRID_LINE;
-      ctx.lineWidth = 1;
-      const spacing = 200;
-      const count = 45; // Extend to new horizon
-      
-      for(let i=0; i<count; i++) {
-          let z = (i * spacing) - this.gridOffset;
-          if (z < 0) z += (count * spacing);
-          
-          // Draw left grid segment (avoid center lane with strict gap)
-          const pLeftOut = this.project({ x: -1000, y: z });
-          const pLeftIn = this.project({ x: -350, y: z }); // Gap: -350
-          
-          if (pLeftOut.visible) {
-             ctx.beginPath();
-             ctx.moveTo(pLeftOut.x, pLeftOut.y);
-             ctx.lineTo(pLeftIn.x, pLeftIn.y);
-             ctx.stroke();
-          }
-
-          // Draw right grid segment (avoid center lane with strict gap)
-          const pRightIn = this.project({ x: 350, y: z }); // Gap: 350
-          const pRightOut = this.project({ x: 1000, y: z });
-          
-          if (pRightOut.visible) {
-             ctx.beginPath();
-             ctx.moveTo(pRightIn.x, pRightIn.y);
-             ctx.lineTo(pRightOut.x, pRightOut.y);
-             ctx.stroke();
-          }
-      }
+    ctx.strokeStyle = COLORS.GRID_LINE; ctx.lineWidth = 1; const spacing = 200;
+    for(let i=0; i<45; i++) {
+      let z = (i * spacing) - this.gridOffset; if (z < 0) z += (45 * spacing);
+      const pL_O = this.project({ x: -1000, y: z }); const pL_I = this.project({ x: -350, y: z });
+      if (pL_O.visible && pL_I.visible) { ctx.beginPath(); ctx.moveTo(pL_O.x, pL_O.y); ctx.lineTo(pL_I.x, pL_I.y); ctx.stroke(); }
+      const pR_I = this.project({ x: 350, y: z }); const pR_O = this.project({ x: 1000, y: z });
+      if (pR_O.visible && pR_I.visible) { ctx.beginPath(); ctx.moveTo(pR_I.x, pR_I.y); ctx.lineTo(pR_O.x, pR_O.y); ctx.stroke(); }
+    }
   }
 
   private drawEntity(ctx: CanvasRenderingContext2D, ent: Entity, proj: { x: number, y: number, scale: number }) {
-      const radius = ent.radius * proj.scale;
-      
-      ctx.fillStyle = ent.color;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = ent.color;
-
-      if (ent.type === EntityType.BULLET) {
-          ctx.beginPath();
-          ctx.arc(proj.x, proj.y, radius, 0, Math.PI * 2);
-          ctx.fill();
-      } else if (ent.type === EntityType.PICKUP) {
-          // Pulse effect
-          const pulse = 1 + Math.sin(performance.now() * 0.01) * 0.2;
-          ctx.beginPath();
-          ctx.arc(proj.x, proj.y, radius * pulse, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.fillStyle = '#fff';
-          ctx.beginPath();
-          ctx.arc(proj.x, proj.y, radius * 0.5, 0, Math.PI * 2);
-          ctx.fill();
-      } else {
-          // Enemies
-          if (ent.type === EntityType.ENEMY_TANK) {
-             ctx.fillRect(proj.x - radius, proj.y - radius, radius * 2, radius * 2);
-          } else if (ent.type === EntityType.ENEMY_SPRINTER) {
-             ctx.beginPath();
-             ctx.moveTo(proj.x, proj.y - radius);
-             ctx.lineTo(proj.x + radius, proj.y + radius);
-             ctx.lineTo(proj.x - radius, proj.y + radius);
-             ctx.closePath();
-             ctx.fill();
-          } else {
-             // Grunt / Default
-             ctx.beginPath();
-             ctx.arc(proj.x, proj.y, radius, 0, Math.PI * 2);
-             ctx.fill();
-          }
-      }
-      ctx.shadowBlur = 0;
+    const r = ent.radius * proj.scale; ctx.fillStyle = ent.color; ctx.shadowBlur = 10; ctx.shadowColor = ent.color;
+    if (ent.type === EntityType.BULLET) { ctx.beginPath(); ctx.arc(proj.x, proj.y, r, 0, Math.PI*2); ctx.fill(); }
+    else if (ent.type === EntityType.PICKUP) {
+      // Spinning square bomb with pulsating aura
+      const pulse = 1 + Math.sin(performance.now() * 0.01) * 0.2;
+      const rotation = performance.now() * 0.005;
+      // Aura
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, r * 2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // Spinning Square
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+      ctx.rotate(rotation);
+      ctx.fillRect(-r * pulse, -r * pulse, r * 2 * pulse, r * 2 * pulse);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-r * pulse, -r * pulse, r * 2 * pulse, r * 2 * pulse);
+      ctx.restore();
+    } else {
+      // All enemies are round
+      ctx.beginPath(); ctx.arc(proj.x, proj.y, r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
   }
 
   private drawGate(ctx: CanvasRenderingContext2D, ent: Entity, proj: { x: number, y: number, scale: number }) {
-      if (!ent.gateData) return;
-      const w = (ent.width || 200) * proj.scale;
-      const h = (ent.height || 100) * proj.scale;
-      
-      // Gate Body
-      ctx.fillStyle = ent.color; // Is RGBA with opacity usually
-      ctx.fillRect(proj.x - w/2, proj.y - h, w, h);
-      
-      // Border
-      ctx.strokeStyle = ent.gateData.value >= 0 ? '#00ff66' : '#ff0000'; // Or use ent constants if mapped
-      if (ent.gateData.op === GateOp.MULTIPLY) {
-          if (ent.gateData.value < 1) ctx.strokeStyle = '#ff0000';
-      }
-      
-      ctx.lineWidth = 2 * proj.scale;
-      ctx.strokeRect(proj.x - w/2, proj.y - h, w, h);
-
-      // Text
-      const opSym = ent.gateData.op === GateOp.MULTIPLY ? 'x' : (ent.gateData.value >= 0 ? '+' : '');
-      const text = `${opSym}${ent.gateData.value}`;
-      
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${40 * proj.scale}px monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, proj.x, proj.y - h/2);
+    if (!ent.gateData) return; const w = (ent.width || 200)*proj.scale; const h = (ent.height || 100)*proj.scale;
+    ctx.fillStyle = ent.color; ctx.fillRect(proj.x - w/2, proj.y - h, w, h);
+    ctx.strokeStyle = (ent.gateData.op === GateOp.MULTIPLY ? ent.gateData.value >= 1 : ent.gateData.value >= 0) ? '#00ff66' : '#ff0000';
+    ctx.lineWidth = 2*proj.scale; ctx.strokeRect(proj.x - w/2, proj.y - h, w, h);
+    const text = `${ent.gateData.op === GateOp.MULTIPLY ? 'x' : (ent.gateData.value>=0?'+':'')}${ent.gateData.value}`;
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${40*proj.scale}px monospace`; ctx.textAlign = 'center'; ctx.fillText(text, proj.x, proj.y - h/2);
   }
 
   private drawParticle(ctx: CanvasRenderingContext2D, ent: Entity, proj: { x: number, y: number, scale: number }) {
-      const radius = ent.radius * proj.scale;
-      ctx.fillStyle = ent.color;
-      ctx.globalAlpha = ent.life !== undefined ? Math.max(0, ent.life) : 1;
-      
-      if (ent.particleShape === ParticleShape.SQUARE) {
-          ctx.save();
-          ctx.translate(proj.x, proj.y);
-          ctx.rotate(ent.rotation || 0);
-          ctx.fillRect(-radius, -radius, radius*2, radius*2);
-          ctx.restore();
-      } else if (ent.particleShape === ParticleShape.LINE) {
-          ctx.save();
-          ctx.translate(proj.x, proj.y);
-          ctx.rotate(ent.rotation || 0);
-          ctx.fillRect(-radius * 2, -radius/2, radius*4, radius);
-          ctx.restore();
-      } else if (ent.particleShape === ParticleShape.RING) {
-          ctx.strokeStyle = ent.color;
-          ctx.lineWidth = 2 * proj.scale;
-          ctx.beginPath();
-          ctx.arc(proj.x, proj.y, radius, 0, Math.PI * 2);
-          ctx.stroke();
-      } else {
-          ctx.beginPath();
-          ctx.arc(proj.x, proj.y, radius, 0, Math.PI * 2);
-          ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+    const r = ent.radius * proj.scale; ctx.fillStyle = ent.color; ctx.globalAlpha = Math.max(0, ent.life || 1);
+    ctx.shadowBlur = 10; ctx.shadowColor = ent.color;
+    if (ent.particleShape === ParticleShape.SQUARE) { ctx.save(); ctx.translate(proj.x, proj.y); ctx.rotate(ent.rotation||0); ctx.fillRect(-r, -r, r*2, r*2); ctx.restore(); }
+    else if (ent.particleShape === ParticleShape.LINE) { ctx.save(); ctx.translate(proj.x, proj.y); ctx.rotate(ent.rotation||0); ctx.fillRect(-r*2, -r/2, r*4, r); ctx.restore(); }
+    else if (ent.particleShape === ParticleShape.RING) { ctx.strokeStyle = ent.color; ctx.lineWidth = 2*proj.scale; ctx.beginPath(); ctx.arc(proj.x, proj.y, r, 0, Math.PI*2); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.arc(proj.x, proj.y, r, 0, Math.PI*2); ctx.fill(); }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   }
 
   private drawPlayerSquad(ctx: CanvasRenderingContext2D) {
-      const p = this.player;
-      const proj = this.project(p.pos);
-      if (!proj.visible) return;
-      const r = p.radius * proj.scale;
-
-      // Draw Squad Drones FIRST (so they are behind the player if overlapping)
-      const count = Math.floor(this.playerStats.projectileCount);
-      if (count > 1) {
-          const offsets = this.getSquadOffsets(Math.min(count, MAX_VISIBLE_SQUAD));
-          for (const off of offsets) {
-              if (off.x === 0 && off.y === 0) continue; // Skip center (player)
-              
-              const x = proj.x + (off.x * proj.scale);
-              const y = proj.y + (off.y * proj.scale);
-              const dr = (p.radius * 0.4) * proj.scale;
-              
-              ctx.fillStyle = '#00ffff';
-              ctx.beginPath();
-              ctx.arc(x, y, dr, 0, Math.PI * 2);
-              ctx.fill();
-          }
+    const p = this.player; const proj = this.project(p.pos); if (!proj.visible) return;
+    const r = p.radius * proj.scale; const count = Math.floor(this.playerStats.projectileCount);
+    if (count > 1) {
+      const off = this.getSquadOffsets(Math.min(count, MAX_VISIBLE_SQUAD));
+      for (const o of off) {
+        if (o.x === 0 && o.y === 0) continue;
+        const dR = (p.radius*0.4)*proj.scale; ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(proj.x + o.x*proj.scale, proj.y + o.y*proj.scale, dR, 0, Math.PI*2); ctx.fill();
       }
-
-      // Main Ship
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = 15;
-      ctx.fillStyle = p.color;
-      
-      // Simple Triangle Ship
-      ctx.beginPath();
-      ctx.moveTo(proj.x, proj.y - r * 1.5);
-      ctx.lineTo(proj.x + r, proj.y + r);
-      ctx.lineTo(proj.x, proj.y + r * 0.5);
-      ctx.lineTo(proj.x - r, proj.y + r);
-      ctx.closePath();
-      ctx.fill();
-      
-      ctx.shadowBlur = 0;
-      
-      // Count Text
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${30 * proj.scale}px Orbitron`;
-      ctx.textAlign = 'center';
-      ctx.fillText(count.toString(), proj.x, proj.y + (60 * proj.scale));
+    }
+    ctx.shadowColor = p.color; ctx.shadowBlur = 15; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.moveTo(proj.x, proj.y-r*1.5); ctx.lineTo(proj.x+r, proj.y+r); ctx.lineTo(proj.x, proj.y+r*0.5); ctx.lineTo(proj.x-r, proj.y+r); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = `bold ${30*proj.scale}px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(count.toString(), proj.x, proj.y + (60*proj.scale));
   }
 }

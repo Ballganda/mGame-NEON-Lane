@@ -53,22 +53,22 @@ export const UIOverlay: React.FC<UIProps> = ({
     return (
       <div className="absolute inset-0 pointer-events-none p-4 flex justify-between items-start">
         
-        {/* Left Column: Stats & Info - Fully Transparent */}
-        <div className="flex flex-col items-start space-y-2 mt-4">
+        {/* Left Column: Stats & Info - Tightened Spacing */}
+        <div className="flex flex-col items-start mt-4">
             {/* Score & Distance Block */}
-            <div className="p-3 bg-transparent">
+            <div className="px-3 py-1 bg-transparent">
                 <div className="text-white font-mono text-4xl font-black leading-none tracking-widest drop-shadow-md text-shadow-black">
                    {String(stats.score).padStart(6, '0')}
                 </div>
-                <div className="text-cyan-400 font-mono text-xl font-bold mt-1 text-shadow-black">
+                <div className="text-cyan-400 font-mono text-xl font-bold text-shadow-black">
                    {stats.distance}m
                 </div>
             </div>
             
-            {/* Secondary Stats */}
-            <div className="p-2 mt-2 bg-transparent">
+            {/* Secondary Stats - Moved Up */}
+            <div className="px-3 bg-transparent">
                  <div className="text-red-400 font-bold text-lg font-mono text-shadow-black">{stats.dps || 0} DPS</div>
-                 <div className="text-white/40 font-mono text-xs mt-1">
+                 <div className="text-white/40 font-mono text-xs">
                     FPS: {stats.fps} <span className="mx-1">|</span> ENT: {stats.activeEntities}
                  </div>
             </div>
