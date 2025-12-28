@@ -68,6 +68,9 @@ export const UIOverlay: React.FC<UIProps> = ({
             {/* Secondary Stats */}
             <div className="p-2 mt-2 bg-transparent">
                  <div className="text-red-400 font-bold text-lg font-mono text-shadow-black">{stats.dps || 0} DPS</div>
+                 <div className="text-white/40 font-mono text-xs mt-1">
+                    FPS: {stats.fps} <span className="mx-1">|</span> ENT: {stats.activeEntities}
+                 </div>
             </div>
         </div>
 

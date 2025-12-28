@@ -244,14 +244,14 @@ export class GameEngine {
 
   private getDifficultyMultiplier(): number {
     switch (this.config.difficulty) {
-      case Difficulty.EASY: return 0.5;
-      case Difficulty.NORMAL: return 1.0;
-      case Difficulty.HARD: return 1.5;
-      case Difficulty.UNFAIR: return 2.0;
-      case Difficulty.EMOTIONAL: return 3.0;
-      case Difficulty.SINGULARITY: return 5.0;
-      case Difficulty.OMEGA: return 10.0;
-      default: return 1.0;
+      case Difficulty.EASY: return 0.4;
+      case Difficulty.NORMAL: return 0.8;
+      case Difficulty.HARD: return 1.2;
+      case Difficulty.UNFAIR: return 1.6;
+      case Difficulty.EMOTIONAL: return 2.4;
+      case Difficulty.SINGULARITY: return 4.0;
+      case Difficulty.OMEGA: return 8.0;
+      default: return 0.8;
     }
   }
 

@@ -1,3 +1,5 @@
+export const GAME_VERSION = 'V0.0.101';
+
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width
 export const CANVAS_HEIGHT = 1280; // Internal resolution height
@@ -37,7 +39,7 @@ export const GATE_HEIGHT = 120;
 // Visuals
 export const HORIZON_Y = 0; 
 // Shift play area up significantly so thumb doesn't cover squad.
-export const VIEWPORT_BOTTOM_OFFSET = 500; 
+export const VIEWPORT_BOTTOM_OFFSET = 350; 
 export const GRID_SPEED = 200;
 
 // Colors
@@ -57,8 +59,8 @@ export const COLORS = {
 
   GATE_POS_BG: 'rgba(0, 255, 100, 0.15)',
   GATE_POS_BORDER: '#00ff66',
-  GATE_NEG_BG: 'rgba(255, 0, 0, 0.15)',
   GATE_NEG_BORDER: '#ff0000',
+  GATE_NEG_BG: 'rgba(255, 0, 0, 0.15)',
   TEXT: '#ffffff',
   LANE_LINE: 'rgba(0, 240, 255, 0.4)',
   LANE_BORDER: '#00f0ff',

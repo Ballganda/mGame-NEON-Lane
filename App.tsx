@@ -4,7 +4,7 @@ import { UIOverlay } from './components/UIOverlay';
 import { GameState, GameConfig, PlayerStats } from './types';
 import { StorageService } from './services/StorageService';
 import { GameEngine } from './services/GameEngine';
-import { BASE_PLAYER_SPEED } from './constants';
+import { BASE_PLAYER_SPEED, GAME_VERSION } from './constants';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
@@ -67,6 +67,12 @@ export default function App() {
         onUpdate={handleUIUpdate}
         engineRef={engineRef}
       />
+      
+      {/* Persistent Version Overlay */}
+      <div className="absolute top-1 left-1 text-[10px] text-white/30 font-mono pointer-events-none z-50">
+        {GAME_VERSION}
+      </div>
+
       <UIOverlay 
         gameState={gameState} 
         stats={stats}
