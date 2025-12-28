@@ -987,24 +987,24 @@ export class GameEngine {
   }
 
   private getSquadOffsets(count: number): Vector2[] {
-      if (count <= 1) return [{x:0, y:0}];
       const offsets: Vector2[] = [];
-      const spacing = 18; 
-      let layer = 0;
-      let placed = 0;
-      while(placed < count) {
-          if (layer === 0) {
-              offsets.push({x:0, y:0});
-              placed++;
-          } else {
-             const rowCount = layer + 1;
-             const width = (rowCount - 1) * spacing * 1.5;
-             const rowStartX = -width/2;
-             const y = layer * spacing;
-             for(let k=0; k<rowCount && placed < count; k++) {
-                 offsets.push({ x: rowStartX + (k * spacing * 1.5), y });
-                 placed++;
-             }
+      offsets.push({x:0, y:0}); // Center
+      if (count <= 1) return offsets;
+
+      const spacing = 18;
+      let layer = 1;
+      while (offsets.length < count) {
+          // Add all points with Manhattan distance == layer
+          for (let x = -layer; x <= layer; x++) {
+              const yAbs = layer - Math.abs(x);
+              // Two y values: +yAbs and -yAbs. If yAbs is 0, only one.
+              if (yAbs === 0) {
+                  offsets.push({x: x * spacing, y: 0});
+              } else {
+                  offsets.push({x: x * spacing, y: yAbs * spacing});
+                  offsets.push({x: x * spacing, y: -yAbs * spacing});
+              }
+              if (offsets.length >= count) break;
           }
           layer++;
       }
@@ -1197,9 +1197,9 @@ export class GameEngine {
           let z = (i * spacing) - this.gridOffset;
           if (z < 0) z += (count * spacing);
           
-          // Draw left grid segment (avoid center lane)
+          // Draw left grid segment (avoid center lane with strict gap)
           const pLeftOut = this.project({ x: -1000, y: z });
-          const pLeftIn = this.project({ x: -300, y: z }); // Stop at lane edge
+          const pLeftIn = this.project({ x: -350, y: z }); // Gap: -350
           
           if (pLeftOut.visible) {
              ctx.beginPath();
@@ -1208,8 +1208,8 @@ export class GameEngine {
              ctx.stroke();
           }
 
-          // Draw right grid segment (avoid center lane)
-          const pRightIn = this.project({ x: 300, y: z }); // Start at lane edge
+          // Draw right grid segment (avoid center lane with strict gap)
+          const pRightIn = this.project({ x: 350, y: z }); // Gap: 350
           const pRightOut = this.project({ x: 1000, y: z });
           
           if (pRightOut.visible) {
@@ -1259,17 +1259,6 @@ export class GameEngine {
              ctx.beginPath();
              ctx.arc(proj.x, proj.y, radius, 0, Math.PI * 2);
              ctx.fill();
-          }
-
-          // HP Bar for tank/boss?
-          if (ent.maxHp > 20 && ent.hp < ent.maxHp) {
-              const barW = radius * 2;
-              const barH = 4 * proj.scale;
-              const pct = ent.hp / ent.maxHp;
-              ctx.fillStyle = '#333';
-              ctx.fillRect(proj.x - radius, proj.y - radius - barH - 2, barW, barH);
-              ctx.fillStyle = '#f00';
-              ctx.fillRect(proj.x - radius, proj.y - radius - barH - 2, barW * pct, barH);
           }
       }
       ctx.shadowBlur = 0;
@@ -1336,13 +1325,29 @@ export class GameEngine {
   }
 
   private drawPlayerSquad(ctx: CanvasRenderingContext2D) {
-      // Draw Player
       const p = this.player;
       const proj = this.project(p.pos);
       if (!proj.visible) return;
-
       const r = p.radius * proj.scale;
-      
+
+      // Draw Squad Drones FIRST (so they are behind the player if overlapping)
+      const count = Math.floor(this.playerStats.projectileCount);
+      if (count > 1) {
+          const offsets = this.getSquadOffsets(Math.min(count, MAX_VISIBLE_SQUAD));
+          for (const off of offsets) {
+              if (off.x === 0 && off.y === 0) continue; // Skip center (player)
+              
+              const x = proj.x + (off.x * proj.scale);
+              const y = proj.y + (off.y * proj.scale);
+              const dr = (p.radius * 0.4) * proj.scale;
+              
+              ctx.fillStyle = '#00ffff';
+              ctx.beginPath();
+              ctx.arc(x, y, dr, 0, Math.PI * 2);
+              ctx.fill();
+          }
+      }
+
       // Main Ship
       ctx.shadowColor = p.color;
       ctx.shadowBlur = 15;
@@ -1358,24 +1363,11 @@ export class GameEngine {
       ctx.fill();
       
       ctx.shadowBlur = 0;
-
-      // Visualize projectile count as small drones
-      const count = Math.floor(this.playerStats.projectileCount);
-      if (count > 1) {
-          const offsets = this.getSquadOffsets(Math.min(count, 50)); // Cap visual squad
-          for (const off of offsets) {
-              if (off.x === 0 && off.y === 0) continue; // Skip center (player)
-              
-              const dronePos = { x: p.pos.x + off.x, y: p.pos.y + off.y };
-              const dProj = this.project(dronePos);
-              if (dProj.visible) {
-                  const dr = (p.radius * 0.4) * dProj.scale;
-                  ctx.fillStyle = '#00ffff';
-                  ctx.beginPath();
-                  ctx.arc(dProj.x, dProj.y, dr, 0, Math.PI * 2);
-                  ctx.fill();
-              }
-          }
-      }
+      
+      // Count Text
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${30 * proj.scale}px Orbitron`;
+      ctx.textAlign = 'center';
+      ctx.fillText(count.toString(), proj.x, proj.y + (60 * proj.scale));
   }
 }

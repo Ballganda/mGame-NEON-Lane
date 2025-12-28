@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.108';
+export const GAME_VERSION = 'V0.0.109';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width
@@ -23,7 +23,7 @@ export const GATE_SPAWN_DISTANCE = 3800;
 
 // Limits & Caps
 export const MAX_PARTICLES = 150; 
-export const MAX_VISIBLE_SQUAD = 50;
+export const MAX_VISIBLE_SQUAD = 41; // Adjusted for Diamond shape (Centered Square Number: 1, 5, 13, 25, 41)
 export const MAX_PROJECTILES_PER_SHOT = 12; 
 
 // Entity Sizes
