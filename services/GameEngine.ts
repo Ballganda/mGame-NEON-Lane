@@ -614,12 +614,42 @@ export class GameEngine {
     this.drawGrid(ctx);
     const pL = this.project({ x: this.getLaneWorldX(0) - 100, y: CONVERGENCE_Z });
     const pR = this.project({ x: this.getLaneWorldX(LANE_COUNT-1) + 100, y: CONVERGENCE_Z });
-    if (pL.visible) { ctx.strokeStyle = COLORS.LANE_BORDER; ctx.lineWidth = 2; ctx.setLineDash([15, 15]); ctx.beginPath(); ctx.moveTo(pL.x, pL.y); ctx.lineTo(pR.x, pR.y); ctx.stroke(); ctx.setLineDash([]); }
+    
+    // Lane lines with intense neon glow
+    ctx.save();
+    ctx.shadowBlur = 35; // Increased from 15
+    ctx.shadowColor = COLORS.LANE_BORDER;
+    if (pL.visible) { 
+      ctx.strokeStyle = COLORS.LANE_BORDER; 
+      ctx.lineWidth = 3; // Slightly thicker
+      ctx.setLineDash([15, 15]); 
+      ctx.beginPath(); 
+      ctx.moveTo(pL.x, pL.y); 
+      ctx.lineTo(pR.x, pR.y); 
+      ctx.stroke(); 
+      ctx.setLineDash([]); 
+    }
     for (let i = 0; i <= LANE_COUNT; i++) {
       const lx = this.getLaneWorldX(0) - 100 + (i * 200); const isB = i === 0 || i === LANE_COUNT;
       const pS = this.project({ x: lx, y: isB ? PLAYER_Z : CONVERGENCE_Z }); const pE = this.project({ x: lx, y: DRAW_DISTANCE });
-      if (pS.visible || pE.visible) { ctx.strokeStyle = isB ? COLORS.LANE_BORDER : COLORS.LANE_LINE; ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); }
+      if (pS.visible || pE.visible) { 
+        // Outside lines (boundaries) get extra glow intensity
+        if (isB) {
+          ctx.shadowBlur = 45;
+          ctx.lineWidth = 4;
+        } else {
+          ctx.shadowBlur = 25;
+          ctx.lineWidth = 2;
+        }
+        ctx.strokeStyle = isB ? COLORS.LANE_BORDER : COLORS.LANE_LINE; 
+        ctx.beginPath(); 
+        ctx.moveTo(pS.x, pS.y); 
+        ctx.lineTo(pE.x, pE.y); 
+        ctx.stroke(); 
+      }
     }
+    ctx.restore();
+
     const all = [...this.entities, ...this.particles].sort((a,b) => b.pos.y - a.pos.y);
     for (const ent of all) {
       if (!ent.active) continue; const proj = this.project(ent.pos); if (!proj.visible) continue;
@@ -655,9 +685,15 @@ export class GameEngine {
     const pBO = this.project({x: xOuter, y: zB});
     if (!pFI.visible || !pBI.visible || !pFO.visible || !pBO.visible) return;
     const color = ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'][index % 4];
+    ctx.save();
     ctx.lineWidth = 2;
     ctx.strokeStyle = color;
     ctx.fillStyle = color + '11';
+    
+    // Add neon glow
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = color;
+
     ctx.beginPath();
     ctx.moveTo(pFI.x, pFI.y - bHeight * pFI.scale);
     ctx.lineTo(pBI.x, pBI.y - bHeight * pBI.scale);
@@ -674,6 +710,7 @@ export class GameEngine {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
   }
 
   private drawGrid(ctx: CanvasRenderingContext2D) {
@@ -740,14 +777,29 @@ export class GameEngine {
     const p = this.player; const proj = this.project(p.pos); if (!proj.visible) return;
     const r = p.radius * proj.scale; const count = Math.floor(this.playerStats.projectileCount);
     if (count > 1) {
+      // Squad dots with intense neon glow
+      ctx.save();
+      ctx.shadowBlur = 25; // Increased from 10
+      ctx.shadowColor = '#00ffff';
       const off = this.getSquadOffsets(Math.min(count, MAX_VISIBLE_SQUAD));
       for (const o of off) {
         if (o.x === 0 && o.y === 0) continue;
-        const dR = (p.radius*0.4)*proj.scale; ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(proj.x + o.x*proj.scale, proj.y + o.y*proj.scale, dR, 0, Math.PI*2); ctx.fill();
+        const dR = (p.radius*0.4)*proj.scale; 
+        ctx.fillStyle = '#00ffff'; 
+        ctx.beginPath(); 
+        ctx.arc(proj.x + o.x*proj.scale, proj.y + o.y*proj.scale, dR, 0, Math.PI*2); 
+        ctx.fill();
       }
+      ctx.restore();
     }
-    ctx.shadowColor = p.color; ctx.shadowBlur = 15; ctx.fillStyle = p.color;
+    // Main player ship with intense glow
+    ctx.save();
+    ctx.shadowColor = p.color; 
+    ctx.shadowBlur = 35; // Increased from 15
+    ctx.fillStyle = p.color;
     ctx.beginPath(); ctx.moveTo(proj.x, proj.y-r*1.5); ctx.lineTo(proj.x+r, proj.y+r); ctx.lineTo(proj.x, proj.y+r*0.5); ctx.lineTo(proj.x-r, proj.y+r); ctx.closePath(); ctx.fill();
-    ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = `bold ${30*proj.scale}px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(count.toString(), proj.x, proj.y + (60*proj.scale));
+    ctx.restore();
+    
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${30*proj.scale}px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(count.toString(), proj.x, proj.y + (60*proj.scale));
   }
 }

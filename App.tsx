@@ -69,9 +69,13 @@ export default function App() {
         engineRef={engineRef}
       />
       
-      {/* Persistent Version Overlay */}
-      <div className="absolute top-1 left-1 text-[10px] text-white/30 font-mono pointer-events-none z-50">
-        {GAME_VERSION}
+      {/* Persistent Top Overlay: Version | FPS | ENT */}
+      <div className="absolute top-1 left-2 text-[10px] text-white/40 font-mono pointer-events-none z-50 flex space-x-2">
+        <span>{GAME_VERSION}</span>
+        <span className="opacity-30">|</span>
+        <span>{stats.fps} FPS</span>
+        <span className="opacity-30">|</span>
+        <span>{stats.activeEntities} ENT</span>
       </div>
 
       <UIOverlay 
