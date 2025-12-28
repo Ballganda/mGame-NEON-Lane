@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.102';
+export const GAME_VERSION = 'V0.0.103';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width

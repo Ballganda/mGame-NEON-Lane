@@ -44,6 +44,7 @@ export default function App() {
       engineRef.current.initGame(); 
       // Explicitly start playing
       engineRef.current.setGameState(GameState.PLAYING);
+      engineRef.current.start(); // Ensure loop is running
     }
     setGameState(GameState.PLAYING);
   };
@@ -83,8 +84,14 @@ export default function App() {
         onToggleSetting={toggleSetting}
         onConfigChange={setConfig}
         onNavigate={(s) => {
-          if (s === GameState.MENU && engineRef.current) engineRef.current.stop();
-          if (s === GameState.PAUSED && engineRef.current) engineRef.current.pause();
+          if (s === GameState.MENU && engineRef.current) {
+            // Instead of stopping fully, reset to idle menu state
+            engineRef.current.initGame();
+            engineRef.current.setGameState(GameState.MENU);
+            engineRef.current.start(); // Ensure loop runs for idle background
+          } else if (s === GameState.PAUSED && engineRef.current) {
+            engineRef.current.pause();
+          }
           setGameState(s);
         }}
       />
