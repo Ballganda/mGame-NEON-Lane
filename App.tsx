@@ -23,12 +23,12 @@ export default function App() {
 
   const engineRef = useRef<GameEngine | null>(null);
 
-  // Derive initial stats (Fixed values now)
+  // Derive initial stats
   const getInitialStats = (): PlayerStats => ({
     maxHp: 100,
     damage: 10,
     fireRate: 4, 
-    projectileCount: 1, // overwritten by initGame to 4
+    projectileCount: 1, // Will be reinforced by initGame
     moveSpeed: BASE_PLAYER_SPEED
   });
 
@@ -80,6 +80,7 @@ export default function App() {
         onResume={resumeGame}
         onRestart={startGame}
         onToggleSetting={toggleSetting}
+        onConfigChange={setConfig}
         onNavigate={(s) => {
           if (s === GameState.MENU && engineRef.current) engineRef.current.stop();
           if (s === GameState.PAUSED && engineRef.current) engineRef.current.pause();

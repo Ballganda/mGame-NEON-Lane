@@ -1,6 +1,5 @@
 import React from 'react';
-import { GameState, PlayerStats, GameConfig } from '../types';
-import { COLORS } from '../constants';
+import { GameState, GameConfig, Difficulty } from '../types';
 import { StorageService } from '../services/StorageService';
 
 interface UIProps {
@@ -12,11 +11,22 @@ interface UIProps {
   onRestart: () => void;
   onToggleSetting: (key: keyof GameConfig) => void;
   onNavigate: (to: GameState) => void;
+  onConfigChange: (newConfig: GameConfig) => void;
 }
+
+const DIFFICULTY_NAMES: Record<Difficulty, string> = {
+  [Difficulty.EASY]: "I have a life",
+  [Difficulty.NORMAL]: "Bring it on",
+  [Difficulty.HARD]: "I Like Pain",
+  [Difficulty.UNFAIR]: "Unfair",
+  [Difficulty.EMOTIONAL]: "Emotional Damage",
+  [Difficulty.SINGULARITY]: "Singularity",
+  [Difficulty.OMEGA]: "Omega Protocol"
+};
 
 export const UIOverlay: React.FC<UIProps> = ({ 
   gameState, stats, config, 
-  onStart, onResume, onRestart, onToggleSetting, onNavigate 
+  onStart, onResume, onRestart, onToggleSetting, onNavigate, onConfigChange
 }) => {
 
   // -- Main Menu --
@@ -43,32 +53,27 @@ export const UIOverlay: React.FC<UIProps> = ({
     return (
       <div className="absolute inset-0 pointer-events-none p-4 flex justify-between items-start">
         
-        {/* Left Column: Stats & Info */}
-        <div className="flex flex-col items-start space-y-2">
+        {/* Left Column: Stats & Info - Transparent Background */}
+        <div className="flex flex-col items-start space-y-2 mt-4">
             {/* Score & Distance Block */}
-            <div className="bg-black/30 p-3 rounded border-l-4 border-cyan-500 backdrop-blur-sm">
-                <div className="text-white font-mono text-4xl font-black leading-none tracking-widest drop-shadow-md">
+            <div className="p-3">
+                <div className="text-white font-mono text-4xl font-black leading-none tracking-widest drop-shadow-md text-shadow-black">
                    {String(stats.score).padStart(6, '0')}
                 </div>
-                <div className="text-cyan-400 font-mono text-xl font-bold mt-1">
+                <div className="text-cyan-400 font-mono text-xl font-bold mt-1 text-shadow-black">
                    {stats.distance}m
                 </div>
             </div>
             
             {/* Secondary Stats */}
-            <div className="bg-black/20 p-2 rounded backdrop-blur-sm mt-2">
-                 <div className="text-red-400 font-bold text-lg font-mono">{stats.dps || 0} DPS</div>
-                 <div className="text-gray-500 font-mono text-xs flex gap-2">
-                    <span>{stats.fps} FPS</span>
-                    <span>|</span>
-                    <span>{stats.activeEntities} ENT</span>
-                 </div>
+            <div className="p-2 mt-2">
+                 <div className="text-red-400 font-bold text-lg font-mono text-shadow-black">{stats.dps || 0} DPS</div>
             </div>
         </div>
 
         {/* Right Column: Pause */}
-        <div className="flex flex-col items-end pointer-events-auto">
-            <button onClick={() => onNavigate(GameState.PAUSED)} className="bg-black/40 hover:bg-white/10 p-2 border border-white/20 rounded mb-6 backdrop-blur-sm">
+        <div className="flex flex-col items-end pointer-events-auto mt-4">
+            <button onClick={() => onNavigate(GameState.PAUSED)} className="bg-black/20 hover:bg-white/10 p-2 border border-white/20 rounded mb-6 backdrop-blur-sm">
                 <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -122,10 +127,30 @@ export const UIOverlay: React.FC<UIProps> = ({
   // -- Settings --
   if (gameState === GameState.SETTINGS) {
     return (
-        <div className="absolute inset-0 bg-black z-20 flex flex-col p-8 justify-center pointer-events-auto">
+        <div className="absolute inset-0 bg-black z-20 flex flex-col p-8 justify-center pointer-events-auto overflow-y-auto">
             <h2 className="text-3xl font-bold text-white title-font mb-8 text-center">SETTINGS</h2>
             
-            <div className="space-y-6">
+            <div className="space-y-6 w-full max-w-md mx-auto">
+                {/* Difficulty Select */}
+                <div className="flex flex-col space-y-2">
+                    <span className="text-xl text-gray-300">Difficulty</span>
+                    <select 
+                        value={config.difficulty}
+                        onChange={(e) => {
+                            const newConfig = { ...config, difficulty: e.target.value as Difficulty };
+                            onConfigChange(newConfig);
+                            StorageService.saveConfig(newConfig);
+                        }}
+                        className="bg-gray-800 text-white p-3 rounded border border-gray-600 focus:border-cyan-500 outline-none font-bold"
+                    >
+                        {Object.entries(DIFFICULTY_NAMES).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="border-t border-gray-700 my-4"></div>
+
                 <div className="flex justify-between items-center">
                     <span className="text-xl text-gray-300">Sound Effects</span>
                     <button 
@@ -155,7 +180,7 @@ export const UIOverlay: React.FC<UIProps> = ({
                 </div>
             </div>
 
-            <button onClick={() => onNavigate(GameState.MENU)} className="mt-12 bg-gray-800 text-white py-4 rounded font-bold border border-gray-600">
+            <button onClick={() => onNavigate(GameState.MENU)} className="mt-12 bg-gray-800 text-white py-4 rounded font-bold border border-gray-600 w-full max-w-md mx-auto hover:bg-gray-700">
                 BACK
             </button>
         </div>

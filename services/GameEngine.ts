@@ -4,7 +4,7 @@ import {
   HORIZON_Y, UNIFIED_ENTITY_SPEED, GRID_SPEED, WORLD_LANE_WIDTH, CAMERA_DEPTH, SPAWN_Z, PLAYER_Z, CONVERGENCE_Z,
   ENEMY_RADIUS_GRUNT, ENEMY_RADIUS_SPRINTER, ENEMY_RADIUS_TANK, MAX_PARTICLES, MAX_VISIBLE_SQUAD, MAX_PROJECTILES_PER_SHOT, BULLET_COLORS, BULLET_RADIUS, VIEWPORT_BOTTOM_OFFSET, TOTAL_WORLD_WIDTH, BASE_PLAYER_SPEED
 } from '../constants';
-import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp } from '../types';
+import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty } from '../types';
 
 export class GameEngine {
   // State
@@ -95,8 +95,6 @@ export class GameEngine {
       // Inverse Project: Screen X -> World X
       const scale = CAMERA_DEPTH / (PLAYER_Z + CAMERA_DEPTH);
       const screenCX = CANVAS_WIDTH / 2;
-      // projX = screenCX + (worldX * scale)
-      // worldX = (projX - screenCX) / scale
       const worldX = (canvasX - screenCX) / scale;
       
       this.touchTargetX = worldX;
@@ -154,7 +152,8 @@ export class GameEngine {
     this.currentPotentialDps = 0;
     this.invulnerabilityTimer = 0;
     
-    this.playerStats.projectileCount = 4;
+    // Start with 1 unit
+    this.playerStats.projectileCount = 1;
 
     this.player.active = true;
     this.player.pos.x = 0; // Center
@@ -168,7 +167,8 @@ export class GameEngine {
     this.bossActive = false;
     this.gridOffset = 0;
 
-    this.spawnGateRow(1800);
+    // Don't spawn gate immediately, give player a second
+    // this.spawnGateRow(1800); 
   }
 
   public start() {
@@ -234,6 +234,19 @@ export class GameEngine {
     });
 
     this.animationFrameId = requestAnimationFrame(this.loop);
+  }
+
+  private getDifficultyMultiplier(): number {
+    switch (this.config.difficulty) {
+      case Difficulty.EASY: return 0.5;
+      case Difficulty.NORMAL: return 1.0;
+      case Difficulty.HARD: return 1.5;
+      case Difficulty.UNFAIR: return 2.0;
+      case Difficulty.EMOTIONAL: return 3.0;
+      case Difficulty.SINGULARITY: return 5.0;
+      case Difficulty.OMEGA: return 10.0;
+      default: return 1.0;
+    }
   }
 
   private update(dt: number) {
@@ -324,8 +337,6 @@ export class GameEngine {
                
                if (ent.pos.y < CONVERGENCE_Z) {
                    const dx = this.player.pos.x - ent.pos.x;
-                   // Use a wider catch zone to ensure they don't just fly past
-                   // Only steer if roughly in front
                    if (Math.abs(dx) < WORLD_LANE_WIDTH * 2) {
                        ent.pos.x += Math.sign(dx) * 120 * dt; 
                    }
@@ -336,7 +347,7 @@ export class GameEngine {
          }
       }
 
-      if (ent.pos.y < -200 || ent.pos.y > SPAWN_Z + 3000) {
+      if (ent.pos.y < -200 || ent.pos.y > SPAWN_Z + 4000) {
         ent.active = false;
       }
 
@@ -398,14 +409,15 @@ export class GameEngine {
   }
 
   private spawnManager(dt: number) {
-    // INCREASED GATE_SPAWN_DISTANCE prevents too frequent gates
+    // 1. GATE Spawning (Distance based)
+    // Check if we travelled far enough for a gate
     if (this.distance - this.lastGateDistance > GATE_SPAWN_DISTANCE) {
         this.spawnGateRow();
         this.lastGateDistance = this.distance;
-        this.spawnTimer = 2.0; 
-        return;
     }
 
+    // 2. ENEMY Spawning (Time based)
+    // Runs independently of Gates
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
         const pattern = Math.random();
@@ -419,29 +431,26 @@ export class GameEngine {
   private spawnArmyWave() {
       const targetLane = Math.floor(Math.random() * LANE_COUNT);
       const laneX = this.getLaneWorldX(targetLane);
-      let baseHp = 10 + (this.wave * 5);
+      const diffMult = this.getDifficultyMultiplier();
+      let baseHp = (10 + (this.wave * 5)) * diffMult;
       
       // CAP DPS used for scaling
       const effectiveDps = Math.min(this.currentPotentialDps || 0, 100000);
 
       // Scale Army Size with capped DPS
-      // Reduced divisor to 100 to slow down growth rate
       let dpsDepthBonus = Math.floor(effectiveDps / 100); 
       
-      // Much longer stream of enemies based on DPS
-      // START EASIER: Base reduced from 15 to 5.
       let gridDepth = 5 + dpsDepthBonus + Math.floor(Math.random() * 4); 
       
-      // PERFORMANCE CAP: Prevent infinite entities causing lag
-      const MAX_GRID_DEPTH = 30; // Max ~150 units per wave (5 cols * 30 rows)
+      const MAX_GRID_DEPTH = 30; 
       if (gridDepth > MAX_GRID_DEPTH) {
           const scaler = gridDepth / MAX_GRID_DEPTH;
-          baseHp = Math.floor(baseHp * scaler); // Transfer count difficulty to HP
+          baseHp = Math.floor(baseHp * scaler); 
           gridDepth = MAX_GRID_DEPTH;
       }
       
       const gridWidth = 5;
-      const spacingX = 35; // Tighter spacing
+      const spacingX = 35; 
       const spacingZ = 40; 
       
       const startXOffset = -((gridWidth - 1) * spacingX) / 2;
@@ -471,6 +480,7 @@ export class GameEngine {
           this.spawnEntity(type, laneX, currentZ, r, baseHp * 3, 50);
       }
       
+      // Spawn Bomb/Pickup
       if (Math.random() > 0.6) {
           const pLane = (targetLane + 1) % LANE_COUNT;
           this.spawnPickup(pLane, SPAWN_Z);
@@ -481,8 +491,9 @@ export class GameEngine {
       const centerZ = SPAWN_Z;
       const type = Math.random() > 0.5 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_TANK;
       const hpMult = type === EntityType.ENEMY_TANK ? 4 : 2;
+      const diffMult = this.getDifficultyMultiplier();
       const r = type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER;
-      const baseHp = (10 + (this.wave * 5)) * hpMult;
+      const baseHp = (10 + (this.wave * 5)) * hpMult * diffMult;
 
       for(let i=0; i<LANE_COUNT; i++) {
           if (Math.random() > 0.3) {
@@ -494,7 +505,8 @@ export class GameEngine {
 
   private spawnSimpleGap() {
       const gapLane = Math.floor(Math.random() * LANE_COUNT);
-      const baseHp = 10 + (this.wave * 5);
+      const diffMult = this.getDifficultyMultiplier();
+      const baseHp = (10 + (this.wave * 5)) * diffMult;
       
       for(let i=0; i<LANE_COUNT; i++) {
           if (i === gapLane) continue;
@@ -526,9 +538,11 @@ export class GameEngine {
   }
 
   private spawnPickup(laneIndex: number, z: number) {
-     const types = [PickupType.NUKE, PickupType.CLUSTER];
+     const types = [PickupType.BOMB_SMALL, PickupType.BOMB_MEDIUM, PickupType.BOMB_LARGE, PickupType.CLUSTER];
      const type = types[Math.floor(Math.random() * types.length)];
-     let color = COLORS.PICKUP_NUKE;
+     let color = COLORS.PICKUP_BOMB_SMALL;
+     if (type === PickupType.BOMB_MEDIUM) color = COLORS.PICKUP_BOMB_MEDIUM;
+     if (type === PickupType.BOMB_LARGE) color = COLORS.PICKUP_BOMB_LARGE;
      if (type === PickupType.CLUSTER) color = COLORS.PICKUP_CLUSTER;
 
      this.entities.push({
@@ -657,38 +671,63 @@ export class GameEngine {
   private applyPickup(type: PickupType) {
     if (this.config.hapticsEnabled) navigator.vibrate(50);
     
-    // NUKE: Clears screen (enemies within view)
-    if (type === PickupType.NUKE) {
-        let killed = 0;
-        this.entities.forEach(e => {
-            if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z && e.pos.y > -200) {
-                e.active = false;
-                e.hp = 0;
-                this.createExplosion(e.pos.x, e.pos.y, 10, '#00ccff');
-                this.score += (e.scoreValue || 10);
-                killed++;
-            }
-        });
-        // Big central flash
-        this.createExplosion(0, 500, 30, '#ffffff');
-        this.shakeTimer = 0.5;
+    // Define Radius/Effect based on type
+    let radius = 0;
+    let color = '#fff';
+    
+    switch (type) {
+        case PickupType.BOMB_SMALL:
+            radius = 300;
+            color = COLORS.PICKUP_BOMB_SMALL;
+            break;
+        case PickupType.BOMB_MEDIUM:
+            radius = 600;
+            color = COLORS.PICKUP_BOMB_MEDIUM;
+            break;
+        case PickupType.BOMB_LARGE:
+            radius = 1200;
+            color = COLORS.PICKUP_BOMB_LARGE;
+            break;
+        case PickupType.CLUSTER:
+            radius = 2000; // Just visual trigger for logic below
+            color = COLORS.PICKUP_CLUSTER;
+            break;
     }
-    // CLUSTER: Clears wide radius around player
-    else if (type === PickupType.CLUSTER) {
+
+    if (type === PickupType.CLUSTER) {
+        // Forward Cone Clear
         this.entities.forEach(e => {
             if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z) {
                 const dist = Math.abs(e.pos.y - this.player.pos.y);
-                if (dist < 1200) { // Large forward radius
+                const dx = Math.abs(e.pos.x - this.player.pos.x);
+                if (dist < 1200 && dx < 400) { 
                     e.active = false;
                     e.hp = 0;
-                    this.createExplosion(e.pos.x, e.pos.y, 8, '#ffdd00');
+                    this.createExplosion(e.pos.x, e.pos.y, 8, color);
                     this.score += (e.scoreValue || 10);
                 }
             }
         });
-        this.createExplosion(0, 300, 20, '#ffdd00');
-        this.shakeTimer = 0.3;
+        this.createExplosion(0, 300, 20, color);
+    } else {
+        // Radial Clear
+        this.entities.forEach(e => {
+            if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z && e.pos.y > -200) {
+                 const dx = e.pos.x - this.player.pos.x;
+                 const dy = e.pos.y - this.player.pos.y;
+                 const dist = Math.sqrt(dx*dx + dy*dy);
+                 
+                 if (dist < radius) {
+                    e.active = false;
+                    e.hp = 0;
+                    this.createExplosion(e.pos.x, e.pos.y, 10, color);
+                    this.score += (e.scoreValue || 10);
+                 }
+            }
+        });
+        this.createExplosion(this.player.pos.x, this.player.pos.y + 200, 30, color);
     }
+    this.shakeTimer = 0.5;
   }
 
   private createExplosion(x: number, z: number, count: number, color: string) {
@@ -750,9 +789,23 @@ export class GameEngine {
     const target = this.findAutoAimTarget();
     const speed = 1800;
 
-    for (const off of offsets) {
+    // Cone Spread Calculation
+    // Total spread angle varies by bullet count, maxing at ~30 degrees for huge squads
+    const maxSpread = 20 * (Math.PI / 180);
+    const currentSpread = Math.min(maxSpread, (actualBulletCount * 0.5) * (Math.PI / 180));
+    
+    for (let i = 0; i < offsets.length; i++) {
+        const off = offsets[i];
         let vx = 0;
         let vy = speed;
+        
+        // Calculate Base Angle (Aim at target or straight ahead)
+        let baseAngle = Math.PI / 2; // Straight up in standard trig, but here Y is depth. 
+        // We use vectors, so let's stick to vector math.
+        
+        let dirX = 0; 
+        let dirY = 1;
+
         if (target) {
             const startX = this.player.pos.x + off.x;
             const startY = this.player.pos.y + off.y;
@@ -760,10 +813,31 @@ export class GameEngine {
             const dy = target.pos.y - startY;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > 0) {
-                vx = (dx / dist) * speed;
-                vy = (dy / dist) * speed;
+                dirX = dx/dist;
+                dirY = dy/dist;
             }
         }
+
+        // Apply Cone Spread
+        // angleOffset is distributed from -spread/2 to +spread/2
+        let angleOffset = 0;
+        if (actualBulletCount > 1) {
+            const step = currentSpread / (actualBulletCount - 1);
+            angleOffset = -currentSpread/2 + (i * step);
+        }
+
+        // Rotate the direction vector by angleOffset
+        // x' = x cos(theta) - y sin(theta)
+        // y' = x sin(theta) + y cos(theta)
+        const cos = Math.cos(angleOffset);
+        const sin = Math.sin(angleOffset);
+        
+        const finalDirX = dirX * cos - dirY * sin;
+        const finalDirY = dirX * sin + dirY * cos;
+
+        vx = finalDirX * speed;
+        vy = finalDirY * speed;
+
         this.entities.push({
             id: Math.random(),
             type: EntityType.BULLET,
@@ -984,7 +1058,11 @@ export class GameEngine {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = `bold ${20 * proj.scale}px sans-serif`;
-      ctx.fillText(ent.pickupType === PickupType.NUKE ? '☢' : '✷', 0, 0);
+      
+      let icon = '✷';
+      if (ent.pickupType === PickupType.BOMB_SMALL || ent.pickupType === PickupType.BOMB_MEDIUM || ent.pickupType === PickupType.BOMB_LARGE) icon = '☢';
+      
+      ctx.fillText(icon, 0, 0);
 
       ctx.restore();
     } else {

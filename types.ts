@@ -6,6 +6,16 @@ export enum GameState {
   SETTINGS = 'SETTINGS'
 }
 
+export enum Difficulty {
+  EASY = 'EASY',             // "I have a life"
+  NORMAL = 'NORMAL',         // "Bring it on"
+  HARD = 'HARD',             // "I Like Pain"
+  UNFAIR = 'UNFAIR',         // "Unfair"
+  EMOTIONAL = 'EMOTIONAL',   // "Emotional Damage"
+  SINGULARITY = 'SINGULARITY', // "Singularity"
+  OMEGA = 'OMEGA'            // "Omega Protocol"
+}
+
 export enum EntityType {
   PLAYER = 'PLAYER',
   ENEMY_GRUNT = 'ENEMY_GRUNT',
@@ -20,8 +30,10 @@ export enum EntityType {
 }
 
 export enum PickupType {
-  NUKE = 'NUKE',           // Clears the entire screen
-  CLUSTER = 'CLUSTER'      // Large radius explosion
+  BOMB_SMALL = 'BOMB_SMALL',
+  BOMB_MEDIUM = 'BOMB_MEDIUM',
+  BOMB_LARGE = 'BOMB_LARGE',
+  CLUSTER = 'CLUSTER'
 }
 
 export enum GateType {
@@ -81,4 +93,5 @@ export interface GameConfig {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   reducedEffects: boolean;
+  difficulty: Difficulty;
 }

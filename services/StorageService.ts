@@ -1,11 +1,12 @@
-import { GameConfig } from '../types';
+import { GameConfig, Difficulty } from '../types';
 
-const STORAGE_KEY_CONFIG = 'neon_runner_config_v1';
+const STORAGE_KEY_CONFIG = 'neon_runner_config_v2';
 
 const DEFAULT_CONFIG: GameConfig = {
   soundEnabled: true,
   hapticsEnabled: true,
   reducedEffects: false,
+  difficulty: Difficulty.NORMAL
 };
 
 export class StorageService {

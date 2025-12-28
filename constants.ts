@@ -16,7 +16,7 @@ export const BASE_SCROLL_SPEED = 200; // World scroll speed (for score)
 export const UNIFIED_ENTITY_SPEED = 350; // Faster approach
 export const CONVERGENCE_Z = 500; // Enemies start tracking player much earlier
 export const BOSS_APPEAR_DISTANCE = 25000; 
-export const GATE_SPAWN_DISTANCE = 4000; // Increased from 1800 to prevent constant gates
+export const GATE_SPAWN_DISTANCE = 4500; // Increased to prevent constant gates
 
 // Limits & Caps
 export const MAX_PARTICLES = 80;
@@ -36,8 +36,8 @@ export const GATE_HEIGHT = 120;
 
 // Visuals
 export const HORIZON_Y = 0; 
-// Shift play area up. Reduced to 150 since we moved UI to side.
-export const VIEWPORT_BOTTOM_OFFSET = 150; 
+// Shift play area up significantly so thumb doesn't cover squad.
+export const VIEWPORT_BOTTOM_OFFSET = 350; 
 export const GRID_SPEED = 200;
 
 // Colors (Tron Style)
@@ -48,8 +48,13 @@ export const COLORS = {
   ENEMY_TANK: '#aa00ff', // Purple
   BOSS: '#ff0000', // Red
   OBSTACLE: '#555555',
-  PICKUP_NUKE: '#00ccff',   // Bright Blue
-  PICKUP_CLUSTER: '#ffdd00', // Yellow
+  
+  // Pickups
+  PICKUP_BOMB_SMALL: '#00ccff',   // Cyan/Blue
+  PICKUP_BOMB_MEDIUM: '#aa00ff',  // Purple
+  PICKUP_BOMB_LARGE: '#ff0000',   // Red
+  PICKUP_CLUSTER: '#ffdd00',      // Yellow
+
   GATE_POS_BG: 'rgba(0, 255, 100, 0.15)',
   GATE_POS_BORDER: '#00ff66',
   GATE_NEG_BG: 'rgba(255, 0, 0, 0.15)',
