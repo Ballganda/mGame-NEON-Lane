@@ -2,7 +2,7 @@ import {
   CANVAS_HEIGHT, CANVAS_WIDTH, LANE_COUNT, COLORS, PLAYER_RADIUS, 
   BASE_SCROLL_SPEED, BOSS_APPEAR_DISTANCE, GATE_SPAWN_DISTANCE, GATE_HEIGHT, 
   HORIZON_Y, UNIFIED_ENTITY_SPEED, GRID_SPEED, WORLD_LANE_WIDTH, CAMERA_DEPTH, SPAWN_Z, PLAYER_Z, CONVERGENCE_Z,
-  ENEMY_RADIUS_GRUNT, ENEMY_RADIUS_SPRINTER, ENEMY_RADIUS_TANK, MAX_PARTICLES, MAX_VISIBLE_SQUAD, MAX_PROJECTILES_PER_SHOT, BULLET_COLORS, BULLET_RADIUS, VIEWPORT_BOTTOM_OFFSET, TOTAL_WORLD_WIDTH, BASE_PLAYER_SPEED
+  ENEMY_RADIUS_GRUNT, ENEMY_RADIUS_SPRINTER, ENEMY_RADIUS_TANK, MAX_PARTICLES, MAX_VISIBLE_SQUAD, MAX_PROJECTILES_PER_SHOT, BULLET_COLORS, BULLET_RADIUS, VIEWPORT_BOTTOM_OFFSET, TOTAL_WORLD_WIDTH, BASE_PLAYER_SPEED, SQUAD_SPREAD_WIDTH, STUCK_DAMAGE_INTERVAL
 } from '../constants';
 import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty } from '../types';
 
@@ -16,6 +16,7 @@ export class GameEngine {
   // Optimization Buckets
   private enemies: Entity[] = [];
   private bullets: Entity[] = [];
+  private pickups: Entity[] = [];
   
   // Stats
   public score: number = 0;
@@ -138,6 +139,7 @@ export class GameEngine {
     this.particles = [];
     this.enemies = [];
     this.bullets = [];
+    this.pickups = [];
     
     this.score = 0;
     this.distance = 0;
@@ -305,6 +307,7 @@ export class GameEngine {
 
     this.enemies = [];
     this.bullets = [];
+    this.pickups = [];
 
     // Entity Update
     for (let i = this.entities.length - 1; i >= 0; i--) {
@@ -314,6 +317,18 @@ export class GameEngine {
         continue;
       }
 
+      // Cleanup logic
+      if (ent.pos.y < -200 || ent.pos.y > SPAWN_Z + 4000) {
+        ent.active = false;
+        continue;
+      }
+
+      // Gate Visiblity: Fade out immediately after player passes
+      if (ent.type === EntityType.GATE && ent.pos.y < this.player.pos.y - 20) {
+          ent.active = false;
+          continue;
+      }
+
       if (ent.type !== EntityType.BOSS) {
          if (ent.type === EntityType.BULLET) {
              if (ent.velocity) {
@@ -321,25 +336,45 @@ export class GameEngine {
                  ent.pos.y += ent.velocity.y * dt;
              }
              this.bullets.push(ent);
-         } else {
-             // Move towards player
+         } else if (ent.type === EntityType.PICKUP) {
+             // Move towards player relative speed
              ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
-             
-             if (ent.type.startsWith('ENEMY')) {
-               this.enemies.push(ent);
-               // Simple convergence
-               if (ent.pos.y < CONVERGENCE_Z) {
-                   const dx = this.player.pos.x - ent.pos.x;
-                   if (Math.abs(dx) < WORLD_LANE_WIDTH * 2) {
-                       ent.pos.x += Math.sign(dx) * 120 * dt; 
-                   }
-               }
-             }
-         }
-      }
+             this.pickups.push(ent);
+         } else if (ent.type.startsWith('ENEMY')) {
+             this.enemies.push(ent);
 
-      if (ent.pos.y < -200 || ent.pos.y > SPAWN_Z + 4000) {
-        ent.active = false;
+             if (ent.isStuckToPlayer && ent.stickOffset) {
+                 // Stuck logic: adhere to player, damage over time
+                 ent.pos.x = this.player.pos.x + ent.stickOffset.x;
+                 ent.pos.y = this.player.pos.y + ent.stickOffset.y;
+                 
+                 // DoT logic
+                 ent.stuckDamageTimer = (ent.stuckDamageTimer || 0) - dt;
+                 if (ent.stuckDamageTimer <= 0) {
+                     this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
+                     this.createExplosion(ent.pos.x, ent.pos.y, 5, COLORS.PLAYER);
+                     if (this.config.hapticsEnabled) navigator.vibrate(50);
+                     ent.stuckDamageTimer = STUCK_DAMAGE_INTERVAL;
+                 }
+             } else {
+                 // Normal Move
+                 ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
+                 
+                 // Convergence / Meandering
+                 if (ent.pos.y < CONVERGENCE_Z) {
+                     // Instead of centering on player, center on (player + formationOffset)
+                     const targetX = this.player.pos.x + (ent.formationOffset || 0);
+                     const dx = targetX - ent.pos.x;
+                     // Only steer if significant distance
+                     if (Math.abs(dx) > 10) {
+                         ent.pos.x += Math.sign(dx) * 120 * dt; 
+                     }
+                 }
+             }
+         } else {
+             // General entities
+             ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
+         }
       }
 
       if (ent.active && ent.type !== EntityType.BULLET) {
@@ -350,7 +385,11 @@ export class GameEngine {
                  }
              }
           } else if (ent.type === EntityType.PICKUP) {
-              this.handlePlayerCollision(ent);
+              if (this.checkCollision(this.player, ent)) {
+                  ent.active = false;
+                  // If player picks up bomb, it explodes at player location
+                  this.applyPickup(ent.pickupType!, this.player.pos);
+              }
           } else if (ent.type.startsWith('ENEMY') || ent.type === EntityType.OBSTACLE) {
               this.handleEnemyPlayerInteraction(ent);
           }
@@ -360,7 +399,37 @@ export class GameEngine {
     // Bullet Collisions
     for (const bullet of this.bullets) {
         if (!bullet.active) continue;
-        for (const enemy of this.enemies) {
+        
+        // 1. Check Pickups (Shootable Bombs)
+        for (const pickup of this.pickups) {
+            if (!pickup.active) continue;
+            // Slightly larger hitbox for shooting pickups
+            const zDiff = Math.abs(bullet.pos.y - pickup.pos.y);
+            const dx = Math.abs(bullet.pos.x - pickup.pos.x);
+            if (zDiff < 60 && dx < (bullet.radius + pickup.radius + 20)) {
+                bullet.active = false;
+                pickup.active = false;
+                // Explode AT pickup location
+                this.applyPickup(pickup.pickupType!, pickup.pos);
+                this.createExplosion(pickup.pos.x, pickup.pos.y, 10, '#fff');
+                break;
+            }
+        }
+        if (!bullet.active) continue;
+
+        // 2. Check Enemies
+        // Sort enemies to prioritize stuck ones? No, standard loop is okay, but we check stuck first?
+        // Actually, let's just loop.
+        
+        let hit = false;
+        
+        // Prioritize stuck enemies for survival
+        const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer && e.active);
+        const normalEnemies = this.enemies.filter(e => !e.isStuckToPlayer && e.active);
+        
+        const checkList = [...stuckEnemies, ...normalEnemies];
+
+        for (const enemy of checkList) {
             if (!enemy.active) continue;
             if (Math.abs(bullet.pos.y - enemy.pos.y) > 60) continue;
             
@@ -376,9 +445,11 @@ export class GameEngine {
                     this.score += (enemy.scoreValue || 10);
                     if (this.config.hapticsEnabled) navigator.vibrate(10);
                 }
+                hit = true;
                 break; 
             }
         }
+        if (hit) continue;
     }
 
     if (this.particles.length > MAX_PARTICLES) {
@@ -505,6 +576,10 @@ export class GameEngine {
       if (type === EntityType.ENEMY_SPRINTER) color = COLORS.ENEMY_SPRINTER;
       if (type === EntityType.ENEMY_TANK) color = COLORS.ENEMY_TANK;
 
+      // Determine Formation Offset for "Meandering"
+      // Randomly assign a target X offset relative to player
+      const formationOffset = (Math.random() - 0.5) * SQUAD_SPREAD_WIDTH;
+
       this.entities.push({
           id: Math.random(),
           type,
@@ -515,7 +590,9 @@ export class GameEngine {
           maxHp: hp,
           color,
           lane: -1,
-          scoreValue: score
+          scoreValue: score,
+          formationOffset,
+          stuckDamageTimer: 0
       });
   }
 
@@ -615,23 +692,26 @@ export class GameEngine {
        if (this.checkCollision(this.player, ent)) {
            if (ent.type === EntityType.PICKUP) {
                ent.active = false;
-               this.applyPickup(ent.pickupType!);
+               this.applyPickup(ent.pickupType!, ent.pos);
            }
        }
     }
   }
 
   private handleEnemyPlayerInteraction(ent: Entity) {
+    if (ent.isStuckToPlayer) return; // Already stuck
+
     if (!ent.isAttacking && this.checkCollision(this.player, ent)) {
-        if (this.invulnerabilityTimer <= 0) {
-            this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
-            this.shakeTimer = 0.3;
-            this.createExplosion(this.player.pos.x, this.player.pos.y, 15, COLORS.PLAYER);
-            if (this.config.hapticsEnabled) navigator.vibrate(100);
-            this.invulnerabilityTimer = 0.5;
-        }
-        ent.active = false;
-        ent.hp = 0;
+        // Stick logic
+        ent.isStuckToPlayer = true;
+        
+        // Calculate relative offset to maintain position on bumper
+        const offX = ent.pos.x - this.player.pos.x;
+        const offY = ent.pos.y - this.player.pos.y;
+        ent.stickOffset = { x: offX, y: offY };
+        ent.stuckDamageTimer = 0; // Deal damage immediately/soon
+
+        if (this.config.hapticsEnabled) navigator.vibrate(20);
     }
   }
 
@@ -644,7 +724,7 @@ export class GameEngine {
       this.playerStats.projectileCount = Math.max(0, newCount); 
   }
 
-  private applyPickup(type: PickupType) {
+  private applyPickup(type: PickupType, origin: Vector2) {
     if (this.config.hapticsEnabled) navigator.vibrate(50);
     
     // New Sizes
@@ -671,10 +751,11 @@ export class GameEngine {
     }
 
     if (type === PickupType.CLUSTER) {
+        // Global screen clear
         this.entities.forEach(e => {
             if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z) {
-                const dist = Math.abs(e.pos.y - this.player.pos.y);
-                const dx = Math.abs(e.pos.x - this.player.pos.x);
+                const dist = Math.abs(e.pos.y - origin.y);
+                const dx = Math.abs(e.pos.x - origin.x);
                 if (dist < 1200 && dx < 400) { 
                     e.active = false;
                     e.hp = 0;
@@ -685,10 +766,11 @@ export class GameEngine {
         });
         this.createExplosion(0, 300, 20, color);
     } else {
+        // Radial blast from origin
         this.entities.forEach(e => {
             if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z && e.pos.y > -200) {
-                 const dx = e.pos.x - this.player.pos.x;
-                 const dy = e.pos.y - this.player.pos.y;
+                 const dx = e.pos.x - origin.x;
+                 const dy = e.pos.y - origin.y;
                  const dist = Math.sqrt(dx*dx + dy*dy);
                  
                  if (dist < radius) {
@@ -699,7 +781,7 @@ export class GameEngine {
                  }
             }
         });
-        this.createExplosion(this.player.pos.x, this.player.pos.y + 200, 30, color);
+        this.createExplosion(origin.x, origin.y, 30, color);
     }
     this.shakeTimer = 0.5;
   }
@@ -727,16 +809,21 @@ export class GameEngine {
   }
 
   private findAutoAimTarget(): Entity | null {
+    // 1. Priority: Stuck Enemies
+    const stuck = this.enemies.find(e => e.active && e.isStuckToPlayer);
+    if (stuck) return stuck;
+
+    // 2. Normal Auto-aim
     let nearest: Entity | null = null;
     let minSqDist = Infinity;
-    const maxAngle = 10 * (Math.PI / 180); // Slight wider cone
+    const maxAngle = 10 * (Math.PI / 180); 
 
     for (const ent of this.enemies) {
         if (!ent.active) continue;
         if (ent.pos.y <= this.player.pos.y) continue;
         const dx = ent.pos.x - this.player.pos.x;
         const dy = ent.pos.y - this.player.pos.y;
-        const angle = Math.atan2(dx, dy); // Angle relative to forward (Y axis)
+        const angle = Math.atan2(dx, dy); 
         if (Math.abs(angle) <= maxAngle) {
             const sqDist = dx*dx + dy*dy;
             if (sqDist < minSqDist) {

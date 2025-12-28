@@ -79,6 +79,11 @@ export interface Entity {
   // Combat state
   isAttacking?: boolean;
   attackTimer?: number;
+  // New Sticky/Formation logic
+  isStuckToPlayer?: boolean;
+  stickOffset?: Vector2;
+  formationOffset?: number; // The X offset from player center this enemy tries to target
+  stuckDamageTimer?: number; // Timer for DoT when stuck
 }
 
 export interface PlayerStats {

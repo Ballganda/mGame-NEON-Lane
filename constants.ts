@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.101';
+export const GAME_VERSION = 'V0.0.102';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width
@@ -35,6 +35,10 @@ export const ENEMY_RADIUS_TANK = 40;
 export const BULLET_RADIUS = 10;
 export const PICKUP_RADIUS = 30;
 export const GATE_HEIGHT = 120;
+
+// Combat
+export const SQUAD_SPREAD_WIDTH = 120; // Width for enemies to meander towards
+export const STUCK_DAMAGE_INTERVAL = 0.5; // Seconds between stuck enemies eating a squad member
 
 // Visuals
 export const HORIZON_Y = 0; 
