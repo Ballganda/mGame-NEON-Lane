@@ -47,6 +47,13 @@ export enum GateOp {
   MULTIPLY = 'MULTIPLY'
 }
 
+export enum ParticleShape {
+  CIRCLE = 'CIRCLE',
+  SQUARE = 'SQUARE',
+  LINE = 'LINE',
+  RING = 'RING'
+}
+
 export interface GateData {
   type: GateType;
   op: GateOp;
@@ -84,6 +91,12 @@ export interface Entity {
   stickOffset?: Vector2;
   formationOffset?: number; // The X offset from player center this enemy tries to target
   stuckDamageTimer?: number; // Timer for DoT when stuck
+  // Visuals
+  particleShape?: ParticleShape;
+  rotation?: number;
+  rotationSpeed?: number;
+  life?: number;
+  maxLife?: number;
 }
 
 export interface PlayerStats {

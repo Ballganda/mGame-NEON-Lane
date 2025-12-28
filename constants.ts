@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.103';
+export const GAME_VERSION = 'V0.0.108';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width
@@ -11,6 +11,7 @@ export const TOTAL_WORLD_WIDTH = LANE_COUNT * WORLD_LANE_WIDTH;
 export const CAMERA_DEPTH = 800;
 export const SPAWN_Z = 3000;
 export const PLAYER_Z = 0;
+export const DRAW_DISTANCE = 8000; // Distance to draw lanes to reach top of screen
 
 // Gameplay
 export const BASE_PLAYER_SPEED = 600;
@@ -18,12 +19,12 @@ export const BASE_SCROLL_SPEED = 200;
 export const UNIFIED_ENTITY_SPEED = 350;
 export const CONVERGENCE_Z = 500;
 export const BOSS_APPEAR_DISTANCE = 25000; 
-export const GATE_SPAWN_DISTANCE = 4500;
+export const GATE_SPAWN_DISTANCE = 3800; 
 
 // Limits & Caps
-export const MAX_PARTICLES = 80;
+export const MAX_PARTICLES = 150; 
 export const MAX_VISIBLE_SQUAD = 50;
-export const MAX_PROJECTILES_PER_SHOT = 20; 
+export const MAX_PROJECTILES_PER_SHOT = 12; 
 
 // Entity Sizes
 export const PLAYER_RADIUS = 12;
@@ -37,14 +38,18 @@ export const PICKUP_RADIUS = 30;
 export const GATE_HEIGHT = 120;
 
 // Combat
-export const SQUAD_SPREAD_WIDTH = 120; // Width for enemies to meander towards
-export const STUCK_DAMAGE_INTERVAL = 0.5; // Seconds between stuck enemies eating a squad member
+export const SQUAD_SPREAD_WIDTH = 120; 
+export const STUCK_DAMAGE_INTERVAL = 0.8; 
+export const MAX_SPREAD_ANGLE_DEG = 12; // Tighter spread (was ~25)
 
 // Visuals
 export const HORIZON_Y = 0; 
-// Shift play area up significantly so thumb doesn't cover squad.
 export const VIEWPORT_BOTTOM_OFFSET = 350; 
 export const GRID_SPEED = 200;
+
+// Cityscape
+export const CITY_BLOCK_SIZE = 1000; 
+export const CITY_STREET_WIDTH = 500; // Pushed out further to ensure no lane overlap
 
 // Colors
 export const COLORS = {
