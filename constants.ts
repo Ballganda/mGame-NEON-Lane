@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.125';
+export const GAME_VERSION = 'V0.0.133';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720;
@@ -12,8 +12,8 @@ export const CAMERA_DEPTH = 800;
 export const SPAWN_Z = 8000;
 export const PLAYER_Z = 0;
 export const DRAW_DISTANCE = 8500; 
-export const BULLET_MAX_RANGE = 4500;
-export const BULLET_FADE_START = 3000;
+export const BULLET_MAX_RANGE = 4000;
+export const BULLET_FADE_START = 2500;
 
 // Gameplay
 export const BASE_PLAYER_SPEED = 700;
@@ -21,7 +21,7 @@ export const BASE_SCROLL_SPEED = 250;
 export const UNIFIED_ENTITY_SPEED = 400;
 export const CONVERGENCE_Z = 600;
 export const BOSS_APPEAR_DISTANCE = 30000; 
-export const GATE_SPAWN_DISTANCE = 4800; 
+export const GATE_SPAWN_DISTANCE = 7200; // Increased spacing between gates
 
 // Limits & Caps
 export const MAX_PARTICLES = 450;
@@ -40,8 +40,7 @@ export const GATE_HEIGHT = 140;
 // Combat
 export const SQUAD_SPREAD_WIDTH = 130; 
 export const STUCK_DAMAGE_INTERVAL = 0.7; 
-export const MAX_SPREAD_ANGLE_DEG = 15; 
-export const COMBO_TIMEOUT = 2.0;
+export const MAX_SPREAD_ANGLE_DEG = 2; 
 
 // Visuals
 export const HORIZON_Y = 0; 
@@ -65,7 +64,6 @@ export const COLORS = {
   PICKUP_BOMB_MEDIUM: '#00ccff',  
   PICKUP_BOMB_LARGE: '#ff00ff',   
   PICKUP_CLUSTER: '#ffdd00',      
-  PICKUP_SHIELD: '#00ffff',
 
   GATE_POS_BG: 'rgba(0, 255, 100, 0.2)',
   GATE_POS_BORDER: '#00ff66',
@@ -74,8 +72,8 @@ export const COLORS = {
   TEXT: '#ffffff',
   LANE_LINE: 'rgba(0, 240, 245, 0.3)',
   LANE_BORDER: '#00f0ff',
+  INNER_LANE_LINE: 'rgba(0, 240, 245, 0.7)', 
   GRID_LINE: 'rgba(0, 240, 255, 0.1)',
-  SHIELD_GLOW: 'rgba(0, 240, 255, 0.6)'
 };
 
 export const BULLET_COLORS = [

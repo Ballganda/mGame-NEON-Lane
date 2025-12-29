@@ -33,8 +33,7 @@ export enum PickupType {
   BOMB_SMALL = 'BOMB_SMALL',
   BOMB_MEDIUM = 'BOMB_MEDIUM',
   BOMB_LARGE = 'BOMB_LARGE',
-  CLUSTER = 'CLUSTER',
-  SHIELD = 'SHIELD'
+  CLUSTER = 'CLUSTER'
 }
 
 export enum GateType {

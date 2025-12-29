@@ -1,10 +1,9 @@
-
 import { 
   CANVAS_HEIGHT, CANVAS_WIDTH, LANE_COUNT, COLORS, PLAYER_RADIUS, 
   BASE_SCROLL_SPEED, BOSS_APPEAR_DISTANCE, GATE_SPAWN_DISTANCE, GATE_HEIGHT, 
   HORIZON_Y, UNIFIED_ENTITY_SPEED, GRID_SPEED, WORLD_LANE_WIDTH, CAMERA_DEPTH, SPAWN_Z, PLAYER_Z, CONVERGENCE_Z,
   ENEMY_RADIUS_GRUNT, ENEMY_RADIUS_SPRINTER, ENEMY_RADIUS_TANK, MAX_PARTICLES, MAX_VISIBLE_SQUAD, MAX_PROJECTILES_PER_SHOT, BULLET_COLORS, BULLET_RADIUS, VIEWPORT_BOTTOM_OFFSET, TOTAL_WORLD_WIDTH, BASE_PLAYER_SPEED, SQUAD_SPREAD_WIDTH, STUCK_DAMAGE_INTERVAL,
-  CITY_BLOCK_SIZE, CITY_STREET_WIDTH, DRAW_DISTANCE, MAX_SPREAD_ANGLE_DEG, BULLET_MAX_RANGE, BULLET_FADE_START, COMBO_TIMEOUT,
+  CITY_BLOCK_SIZE, CITY_STREET_WIDTH, DRAW_DISTANCE, MAX_SPREAD_ANGLE_DEG, BULLET_MAX_RANGE, BULLET_FADE_START,
   PICKUP_RADIUS
 } from '../constants.ts';
 import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types.ts';
@@ -29,10 +28,9 @@ export class GameEngine {
   public distance: number = 0;
   public wave: number = 1;
   public fps: number = 60;
-  public combo: number = 1;
-  public comboTimer: number = 0;
   public currentPotentialDps: number = 0;
-  public shieldTimer: number = 0;
+  
+  private battleIntensity: number = 0;
 
   public config: GameConfig;
   public playerStats: PlayerStats;
@@ -129,10 +127,12 @@ export class GameEngine {
 
   public initGame() {
     this.entities = []; this.particles = []; this.enemies = []; this.bullets = []; this.pickups = [];
-    this.score = 0; this.distance = 0; this.wave = 1; this.combo = 1; this.comboTimer = 0;
-    this.shieldTimer = 0; this.playerStats.projectileCount = 1; this.player.active = true;
+    this.score = 0; this.distance = 0; this.wave = 1; this.battleIntensity = 0;
+    this.playerStats.projectileCount = 1; this.player.active = true;
     this.player.pos.x = 0; this.touchTargetX = null; this.isTouching = false;
-    this.lastGateDistance = 0; this.spawnTimer = 2.0; this.shootTimer = 0;
+    this.lastGateDistance = -GATE_SPAWN_DISTANCE + 1000; 
+    this.spawnTimer = 0.2; 
+    this.shootTimer = 0;
     this.shakeTimer = 0; this.flashTimer = 0; this.bossActive = false; this.bossEntity = null;
     this.nextBossDistance = BOSS_APPEAR_DISTANCE; this.gridOffset = 0;
   }
@@ -167,8 +167,8 @@ export class GameEngine {
       this.currentPotentialDps = this.playerStats.damage * this.playerStats.projectileCount * this.playerStats.fireRate;
       this.onUIUpdate({
         score: Math.floor(this.score), hp: Math.floor(this.playerStats.projectileCount), distance: Math.floor(this.distance),
-        fps: this.fps, state: this.state, dps: Math.round(this.currentPotentialDps), combo: this.combo,
-        shieldRatio: this.shieldTimer > 0 ? this.shieldTimer / 5 : null,
+        fps: this.fps, state: this.state, dps: Math.round(this.currentPotentialDps),
+        activeEntities: this.entities.length,
         bossHp: this.bossEntity?.active ? (this.bossEntity.hp / this.bossEntity.maxHp) : null
       });
     }
@@ -186,14 +186,12 @@ export class GameEngine {
 
   private update(dt: number) {
     if (this.playerStats.projectileCount < 1) { this.endGame(); return; }
-    if (this.shieldTimer > 0) this.shieldTimer -= dt;
     if (this.flashTimer > 0) this.flashTimer -= dt;
-    if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.combo = 1; }
 
     const scrollSpeed = BASE_SCROLL_SPEED + (this.wave * 15);
     this.distance += scrollSpeed * dt;
     this.wave = 1 + Math.floor(this.distance / 2000);
-    this.score += 10 * this.combo * dt;
+    this.score += 10 * dt;
     this.gridOffset = (this.gridOffset + GRID_SPEED * dt) % 200;
 
     const boundary = (TOTAL_WORLD_WIDTH / 2) - 40;
@@ -213,39 +211,46 @@ export class GameEngine {
     if (!this.bossActive) this.spawnManager(dt);
 
     this.enemies = []; this.bullets = []; this.pickups = [];
+    
+    let minEnemyZ = DRAW_DISTANCE;
 
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const ent = this.entities[i];
       if (!ent.active) { this.entities.splice(i, 1); continue; }
       if (ent.pos.y > DRAW_DISTANCE + 500 || ent.pos.y < -300) { ent.active = false; continue; }
 
+      if (ent.type === EntityType.PICKUP) {
+        ent.rotation = (ent.rotation || 0) + (ent.rotationSpeed || 2) * dt;
+      }
+
       if (ent.type === EntityType.BULLET) {
         if (ent.velocity) { ent.pos.x += ent.velocity.x * dt; ent.pos.y += ent.velocity.y * dt; }
+        if (ent.pos.y > BULLET_MAX_RANGE) { ent.active = false; continue; }
         this.bullets.push(ent);
       } else if (ent.type === EntityType.PICKUP) {
         ent.pos.y -= UNIFIED_ENTITY_SPEED * dt; this.pickups.push(ent);
       } else if (ent.type === EntityType.BOSS) {
         this.updateBoss(ent, dt); this.enemies.push(ent);
+        minEnemyZ = Math.min(minEnemyZ, ent.pos.y);
       } else if (ent.type.startsWith('ENEMY')) {
         this.enemies.push(ent);
         if (ent.isStuckToPlayer && ent.stickOffset) {
           ent.pos.x = this.player.pos.x + ent.stickOffset.x;
           ent.pos.y = this.player.pos.y + ent.stickOffset.y;
-          if (this.shieldTimer <= 0) {
-            ent.stuckDamageTimer = (ent.stuckDamageTimer || 0) - dt;
-            if (ent.stuckDamageTimer <= 0) {
-              this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
-              SoundService.playHit(); ent.stuckDamageTimer = STUCK_DAMAGE_INTERVAL;
-            }
-          } else {
-             ent.active = false; // Destroy if shield active
-             this.createHitEffect(ent.pos, EntityType.PARTICLE, 20, COLORS.SHIELD_GLOW);
+          ent.stuckDamageTimer = (ent.stuckDamageTimer || 0) - dt;
+          if (ent.stuckDamageTimer <= 0) {
+            this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
+            SoundService.playHit(); ent.stuckDamageTimer = STUCK_DAMAGE_INTERVAL;
           }
+          minEnemyZ = 0; 
         } else {
           ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
+          minEnemyZ = Math.min(minEnemyZ, ent.pos.y);
           if (ent.pos.y < CONVERGENCE_Z) {
             const targetX = this.player.pos.x + (ent.formationOffset || 0);
-            ent.pos.x += (targetX - ent.pos.x) * (2 + this.combo * 0.1) * dt; 
+            const dx = targetX - ent.pos.x;
+            const steerEase = 0.5 + (1.0 - (ent.pos.y / CONVERGENCE_Z)) * 1.5;
+            ent.pos.x += dx * steerEase * dt; 
           }
         }
       } else { ent.pos.y -= UNIFIED_ENTITY_SPEED * dt; }
@@ -263,32 +268,38 @@ export class GameEngine {
           }
         } else if (ent.type.startsWith('ENEMY') || ent.type === EntityType.BOSS) {
           if (!ent.isStuckToPlayer && this.checkCollision(this.player, ent)) {
-            if (this.shieldTimer > 0) {
-              ent.hp -= 500; if(ent.hp <= 0) ent.active = false;
-              this.createHitEffect(ent.pos, EntityType.PARTICLE, 30, COLORS.SHIELD_GLOW);
-            } else {
-              ent.isStuckToPlayer = true; ent.stickOffset = { x: ent.pos.x - this.player.pos.x, y: ent.pos.y - this.player.pos.y };
-              SoundService.playHit(); if (this.config.hapticsEnabled) navigator.vibrate(50);
-            }
+            ent.isStuckToPlayer = true; ent.stickOffset = { x: ent.pos.x - this.player.pos.x, y: ent.pos.y - this.player.pos.y };
+            SoundService.playHit(); if (this.config.hapticsEnabled) navigator.vibrate(50);
           }
         }
       }
     }
+    
+    const targetIntensity = Math.max(0, 1.0 - (minEnemyZ / 1500));
+    this.battleIntensity += (targetIntensity - this.battleIntensity) * 5 * dt;
 
     for (const bullet of this.bullets) {
       if (!bullet.active) continue;
-      for (const enemy of this.enemies) {
-        if (!enemy.active || Math.abs(bullet.pos.y - enemy.pos.y) > 120) continue;
+      
+      let hit = false;
+      const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer);
+      for (const enemy of stuckEnemies) {
+        if (!enemy.active) continue;
         if (this.checkCollision(bullet, enemy)) {
-          bullet.active = false; enemy.hp -= (bullet.damage || 10);
-          this.createHitEffect(enemy.pos, enemy.type, 12);
-          if (enemy.hp <= 0) {
-            enemy.active = false; if (enemy.type === EntityType.BOSS) this.onBossDefeated();
-            this.createHitEffect(enemy.pos, enemy.type, 40);
-            SoundService.playExplosion(enemy.type === EntityType.ENEMY_TANK);
-            this.score += (enemy.scoreValue || 10) * this.combo;
-            this.combo++; this.comboTimer = COMBO_TIMEOUT;
-          }
+          this.damageEnemy(enemy, bullet);
+          bullet.active = false;
+          hit = true;
+          break;
+        }
+      }
+      
+      if (hit) continue;
+
+      for (const enemy of this.enemies) {
+        if (!enemy.active || enemy.isStuckToPlayer || Math.abs(bullet.pos.y - enemy.pos.y) > 120) continue;
+        if (this.checkCollision(bullet, enemy)) {
+          this.damageEnemy(enemy, bullet);
+          bullet.active = false;
           break;
         }
       }
@@ -301,6 +312,19 @@ export class GameEngine {
     }
   }
 
+  private damageEnemy(enemy: Entity, bullet: Entity) {
+    enemy.hp -= (bullet.damage || 10);
+    this.createHitEffect(enemy.pos, enemy.type, 12);
+    if (enemy.type === EntityType.BOSS) enemy.pos.y = Math.min(2500, enemy.pos.y + 15); 
+    if (enemy.hp <= 0) {
+      enemy.active = false; 
+      if (enemy.type === EntityType.BOSS) this.onBossDefeated();
+      this.createHitEffect(enemy.pos, enemy.type, 40);
+      SoundService.playExplosion(enemy.type === EntityType.ENEMY_TANK);
+      this.score += (enemy.scoreValue || 10);
+    }
+  }
+
   private spawnBoss() {
     this.bossActive = true; const hp = 3000 * this.wave * this.getDifficultyMultiplier();
     const boss: Entity = {
@@ -310,27 +334,34 @@ export class GameEngine {
   }
 
   private updateBoss(boss: Entity, dt: number) {
-    if (boss.pos.y > 1800) boss.pos.y -= 400 * dt;
-    else {
-      boss.pos.y = 1800 + Math.sin(this.distance * 0.004) * 150;
-      if (boss.velocity) { boss.pos.x += boss.velocity.x * dt; if (Math.abs(boss.pos.x) > 280) boss.velocity.x *= -1; }
-      if (boss.attackTimer !== undefined) {
-        boss.attackTimer -= dt;
-        if (boss.attackTimer <= 0) {
-          this.spawnEntity(EntityType.ENEMY_SPRINTER, boss.pos.x, boss.pos.y, ENEMY_RADIUS_SPRINTER, 100, 50);
-          boss.attackTimer = Math.max(0.4, 3 - this.wave * 0.3);
-        }
+    const minZ = 600; 
+    if (boss.pos.y > minZ) {
+      const approachSpeed = 300 + (boss.pos.y * 0.15); 
+      boss.pos.y -= approachSpeed * dt;
+    }
+    if (boss.pos.y < 800) this.shakeTimer = Math.max(this.shakeTimer, 0.1); 
+    if (boss.velocity) { 
+        boss.pos.x += boss.velocity.x * dt; 
+        if (Math.abs(boss.pos.x) > 280) boss.velocity.x *= -1; 
+    }
+    if (boss.attackTimer !== undefined) {
+      boss.attackTimer -= dt;
+      if (boss.attackTimer <= 0) {
+        this.spawnEntity(EntityType.ENEMY_SPRINTER, boss.pos.x, boss.pos.y, ENEMY_RADIUS_SPRINTER, 100, 50);
+        const proximityFactor = Math.max(0.1, (boss.pos.y - minZ) / 2000);
+        boss.attackTimer = 0.5 + proximityFactor * 3.0; 
       }
     }
   }
 
   private onBossDefeated() {
     this.bossActive = false; this.bossEntity = null; this.nextBossDistance = this.distance + BOSS_APPEAR_DISTANCE;
-    this.spawnPickup(1, 1500, PickupType.SHIELD); this.shakeTimer = 1.2; SoundService.playExplosion(true);
+    this.shakeTimer = 1.2; SoundService.playExplosion(true);
   }
 
   private spawnManager(dt: number) {
-    if (this.distance - this.lastGateDistance > (GATE_SPAWN_DISTANCE - this.wave * 100)) {
+    const targetGateDistance = Math.max(2200, GATE_SPAWN_DISTANCE - (this.wave * 120));
+    if (this.distance - this.lastGateDistance > targetGateDistance) {
       this.spawnGateRow(); this.lastGateDistance = this.distance;
     }
     this.spawnTimer -= dt;
@@ -377,15 +408,19 @@ export class GameEngine {
   }
 
   private spawnPickup(lane: number, z: number, forcedType?: PickupType) {
-    const types = forcedType ? [forcedType] : [PickupType.BOMB_MEDIUM, PickupType.CLUSTER, PickupType.SHIELD];
+    const types = forcedType ? [forcedType] : [PickupType.BOMB_SMALL, PickupType.BOMB_MEDIUM, PickupType.BOMB_LARGE, PickupType.CLUSTER];
     const type = types[Math.floor(Math.random() * types.length)];
+    let color = COLORS.PICKUP_BOMB_MEDIUM;
+    if (type === PickupType.BOMB_SMALL) color = COLORS.PICKUP_BOMB_SMALL;
+    if (type === PickupType.BOMB_LARGE) color = COLORS.PICKUP_BOMB_LARGE;
+    if (type === PickupType.CLUSTER) color = COLORS.PICKUP_CLUSTER;
+
     this.entities.push({
-      id: Math.random(), type: EntityType.PICKUP, pos: { x: this.getLaneWorldX(lane), y: z }, radius: PICKUP_RADIUS, active: true, hp: 1, maxHp: 1, color: type === PickupType.SHIELD ? COLORS.PICKUP_SHIELD : COLORS.PICKUP_CLUSTER, lane, pickupType: type
+      id: Math.random(), type: EntityType.PICKUP, pos: { x: this.getLaneWorldX(lane), y: z }, radius: PICKUP_RADIUS, active: true, hp: 1, maxHp: 1, color, lane, pickupType: type, rotation: 0, rotationSpeed: 1 + Math.random() * 4
     });
   }
 
   private spawnGateRow() {
-    const dps = this.currentPotentialDps || 1;
     const goodLane = Math.floor(Math.random() * LANE_COUNT);
     for (let i = 0; i < LANE_COUNT; i++) {
       const op = Math.random() > 0.6 ? GateOp.MULTIPLY : GateOp.ADD;
@@ -416,22 +451,38 @@ export class GameEngine {
   }
 
   private applyPickup(type: PickupType, origin: Vector2) {
-    if (type === PickupType.SHIELD) { this.shieldTimer = 5; SoundService.playShieldUp(); }
-    else {
-      this.entities.forEach(e => {
-        if (e.active && (e.type.startsWith('ENEMY') || e.type === EntityType.BOSS) && e.pos.y < SPAWN_Z) {
-          const dx = e.pos.x - origin.x; const dy = e.pos.y - origin.y;
-          if (Math.sqrt(dx * dx + dy * dy) < 1000) {
-            if (e.type === EntityType.BOSS) e.hp -= 1500; else { e.active = false; this.score += (e.scoreValue || 10) * this.combo; this.combo++; }
-          }
-        }
-      });
-      this.createHitEffect(origin, EntityType.PARTICLE, 40, COLORS.PICKUP_BOMB_LARGE);
-      this.shakeTimer = 0.6; SoundService.playExplosion(true);
+    let blastRadius = 800;
+    switch(type) {
+      case PickupType.BOMB_SMALL: blastRadius = 400; break;
+      case PickupType.BOMB_MEDIUM: blastRadius = 800; break;
+      case PickupType.BOMB_LARGE: blastRadius = 1500; break;
+      case PickupType.CLUSTER: blastRadius = 1000; break;
     }
+
+    let color = COLORS.PICKUP_BOMB_MEDIUM;
+    if (type === PickupType.BOMB_SMALL) color = COLORS.PICKUP_BOMB_SMALL;
+    if (type === PickupType.BOMB_LARGE) color = COLORS.PICKUP_BOMB_LARGE;
+    if (type === PickupType.CLUSTER) color = COLORS.PICKUP_CLUSTER;
+
+    this.entities.forEach(e => {
+      if (e.active && (e.type.startsWith('ENEMY') || e.type === EntityType.BOSS) && e.pos.y < SPAWN_Z) {
+        const dx = e.pos.x - origin.x; const dy = e.pos.y - origin.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < blastRadius) {
+          const dmg = type === PickupType.BOMB_LARGE ? 3000 : (type === PickupType.BOMB_MEDIUM ? 1500 : 800);
+          if (e.type === EntityType.BOSS) e.hp -= dmg; 
+          else { e.active = false; this.score += (e.scoreValue || 10); }
+          this.createHitEffect(e.pos, e.type, 10, color);
+        }
+      }
+    });
+    this.createHitEffect(origin, EntityType.PARTICLE, 60, color);
+    this.shakeTimer = type === PickupType.BOMB_LARGE ? 0.9 : 0.6; 
+    SoundService.playExplosion(type === PickupType.BOMB_LARGE || type === PickupType.BOMB_MEDIUM);
   }
 
   private createHitEffect(pos: Vector2, type: EntityType, count: number, color?: string) {
+    if (this.config.reducedEffects) count = Math.floor(count / 2);
     let c = color || COLORS.ENEMY_GRUNT;
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2; const speed = 200 + Math.random() * 600;
@@ -465,14 +516,44 @@ export class GameEngine {
   private draw() {
     if (!this.ctx) return; const ctx = this.ctx;
     ctx.fillStyle = '#020202'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    const now = Date.now();
     ctx.save(); if (this.shakeTimer > 0) ctx.translate((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
     this.drawCityscape(ctx); this.drawGrid(ctx);
     
-    ctx.strokeStyle = COLORS.LANE_BORDER; ctx.lineWidth = 4;
-    for (let i of [0, 3]) {
-      const lx = this.getLaneWorldX(0) - 100 + (i * 200);
-      const pS = this.project({ x: lx, y: 0 }); const pE = this.project({ x: lx, y: DRAW_DISTANCE });
-      if (pS.visible && pE.visible) { ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); }
+    // Pulse calculation for lane lines
+    const linePulse = 0.5 + Math.sin(now / 300) * 0.2;
+
+    // Lane lines
+    for (let i of [-1.5, -0.5, 0.5, 1.5]) {
+      const isInner = i === -0.5 || i === 0.5;
+      const lx = i * WORLD_LANE_WIDTH;
+      const zStart = isInner ? DRAW_DISTANCE : 0;
+      const zEnd = isInner ? CONVERGENCE_Z : DRAW_DISTANCE;
+      
+      const pS = this.project({ x: lx, y: zStart }); 
+      const pE = this.project({ x: lx, y: zEnd });
+      
+      if (pS.visible && pE.visible) {
+        ctx.save();
+        const laneColor: string = isInner ? (COLORS as any).INNER_LANE_LINE : COLORS.LANE_BORDER;
+        ctx.strokeStyle = laneColor; 
+        ctx.lineWidth = isInner ? 3 : 6;
+        
+        // Neon Glow
+        const glowRadius = isInner ? (10 + linePulse * 15) : (15 + this.battleIntensity * 40 + linePulse * 20);
+        ctx.shadowBlur = glowRadius * pS.scale; 
+        ctx.shadowColor = laneColor;
+        
+        ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); 
+        
+        if (!isInner && this.battleIntensity > 0.2) {
+           ctx.lineWidth = 12;
+           ctx.globalAlpha = (this.battleIntensity * 0.4) + (linePulse * 0.2);
+           ctx.shadowBlur = (25 + this.battleIntensity * 60) * pS.scale;
+           ctx.stroke();
+        }
+        ctx.restore();
+      }
     }
 
     const all = [...this.entities, ...this.particles].filter(e => e.active).sort((a, b) => b.pos.y - a.pos.y);
@@ -483,8 +564,36 @@ export class GameEngine {
         ctx.fillStyle = ent.color; ctx.fillRect(proj.x - w / 2, proj.y - h, w, h);
         const text = `${ent.gateData!.op === GateOp.MULTIPLY ? 'x' : '+'}${ent.gateData!.value}`;
         ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, 45 * proj.scale)}px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(text, proj.x, proj.y - h / 2);
+      } else if (ent.type === EntityType.PICKUP) {
+        const pulse = 0.8 + Math.sin(now / 150) * 0.2;
+        const size = ent.radius * proj.scale * 1.5;
+        ctx.save();
+        ctx.translate(proj.x, proj.y);
+        ctx.rotate(ent.rotation || 0);
+        ctx.shadowBlur = 25 * proj.scale * pulse;
+        ctx.shadowColor = ent.color;
+        ctx.fillStyle = ent.color;
+        ctx.fillRect(-size/2, -size/2, size, size);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2 * proj.scale;
+        ctx.strokeRect(-size/2, -size/2, size, size);
+        ctx.restore();
+      } else if (ent.type === EntityType.BULLET) {
+        let bulletScale = 1.0;
+        let bulletAlpha = 1.0;
+        if (ent.pos.y > BULLET_FADE_START) {
+          const t = (ent.pos.y - BULLET_FADE_START) / (BULLET_MAX_RANGE - BULLET_FADE_START);
+          bulletScale = 1.0 - t;
+          bulletAlpha = 1.0 - t;
+        }
+        ctx.save();
+        ctx.globalAlpha = bulletAlpha;
+        ctx.fillStyle = ent.color; ctx.beginPath(); ctx.arc(proj.x, proj.y, ent.radius * proj.scale * bulletScale, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
       } else if (ent.type === EntityType.PLAYER) {
-         // Drawn later
+         // Skip, drawn via drawPlayer
+      } else if (ent.type === EntityType.BOSS) {
+         this.drawBoss(ctx, ent, proj);
       } else {
         ctx.fillStyle = ent.color; ctx.beginPath(); ctx.arc(proj.x, proj.y, ent.radius * proj.scale, 0, Math.PI * 2); ctx.fill();
       }
@@ -495,43 +604,76 @@ export class GameEngine {
     ctx.restore();
   }
 
+  private drawBoss(ctx: CanvasRenderingContext2D, ent: Entity, proj: { x: number, y: number, scale: number }) {
+    const r = ent.radius * proj.scale;
+    ctx.save(); ctx.shadowBlur = 40; ctx.shadowColor = COLORS.BOSS;
+    ctx.fillStyle = COLORS.BOSS; ctx.beginPath();
+    ctx.moveTo(proj.x, proj.y - r * 1.5);
+    ctx.lineTo(proj.x + r, proj.y);
+    ctx.lineTo(proj.x + r * 0.5, proj.y + r);
+    ctx.lineTo(proj.x - r * 0.5, proj.y + r);
+    ctx.lineTo(proj.x - r, proj.y);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
   private drawPlayer(ctx: CanvasRenderingContext2D) {
     const proj = this.project(this.player.pos); if (!proj.visible) return;
     const r = this.player.radius * proj.scale;
-    if (this.shieldTimer > 0) {
-      ctx.strokeStyle = COLORS.SHIELD_GLOW; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(proj.x, proj.y, r * 2.5, 0, Math.PI * 2); ctx.stroke();
-    }
     ctx.fillStyle = COLORS.PLAYER; ctx.beginPath(); ctx.moveTo(proj.x, proj.y - r * 2); ctx.lineTo(proj.x + r, proj.y + r); ctx.lineTo(proj.x - r, proj.y + r); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = `bold 24px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(Math.floor(this.playerStats.projectileCount).toString(), proj.x, proj.y + 60);
+    ctx.fillStyle = '#fff'; ctx.font = `bold 28px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(Math.floor(this.playerStats.projectileCount).toString(), proj.x, proj.y + 60);
   }
 
   private drawCityscape(ctx: CanvasRenderingContext2D) {
     const start = Math.floor((this.distance - 200) / CITY_BLOCK_SIZE);
-    const end = Math.floor((this.distance + DRAW_DISTANCE) / CITY_BLOCK_SIZE);
-    for (let i = end; i >= start; i--) {
+    const end = Math.floor((this.distance + DRAW_DISTANCE + 1000) / CITY_BLOCK_SIZE);
+    for(let i = end; i >= start; i--) {
       const z = (i * CITY_BLOCK_SIZE) - this.distance;
       this.drawBuilding(ctx, i, -1, z); this.drawBuilding(ctx, i, 1, z);
     }
   }
 
-  private drawBuilding(ctx: CanvasRenderingContext2D, index: number, side: number, z: number) {
-    const seed = Math.abs((index * 13 + side * 17) % 100);
-    const h = 200 + seed * 4; const w = 150 + (seed % 10) * 10;
-    const x = side * CITY_STREET_WIDTH;
-    const pF = this.project({ x, y: z }); const pB = this.project({ x, y: z + 800 });
-    if (!pF.visible || !pB.visible) return;
-    ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(pF.x, pF.y - h * pF.scale, (pB.x - pF.x), h * pF.scale);
-    if (seed % 3 === 0) {
-        ctx.fillStyle = index % 2 === 0 ? '#ff00ff' : '#00ffff';
-        ctx.fillRect(pF.x + (side < 0 ? -20 : 10), pF.y - h * pF.scale * 0.8, 10, h * pF.scale * 0.6);
-    }
+  private drawBuilding(ctx: CanvasRenderingContext2D, index: number, side: number, zCenter: number) {
+    const seed = Math.abs((index * 9301 + side * 49291) % 10000);
+    const bWidth = 150 + (seed % 200);
+    const bHeight = 200 + (seed % 400);
+    const zF = zCenter - 400; const zB = zCenter + 400;
+    const xInner = side * CITY_STREET_WIDTH; const xOuter = xInner + (side * bWidth);
+    const pIF = this.project({ x: xInner, y: zF }); const pOF = this.project({ x: xOuter, y: zF });
+    const pIB = this.project({ x: xInner, y: zB }); const pOB = this.project({ x: xOuter, y: zB });
+    if (!pIF.visible || !pIB.visible || !pOF.visible || !pOB.visible) return;
+
+    const colors = ['#aa00ff', '#00ff00', '#ffff00', '#ff00ff', '#00ffff'];
+    const color = colors[index % colors.length];
+    
+    ctx.save();
+    ctx.strokeStyle = color; 
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 25 * pIF.scale;
+    ctx.shadowColor = color;
+    
+    // Top face
+    ctx.beginPath();
+    ctx.moveTo(pIF.x, pIF.y - bHeight * pIF.scale);
+    ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
+    ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
+    ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
+    ctx.closePath(); ctx.stroke();
+    
+    // Vertical corner lines
+    ctx.beginPath();
+    ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - bHeight * pIF.scale);
+    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
+    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
+    ctx.moveTo(pOB.x, pOB.y); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawGrid(ctx: CanvasRenderingContext2D) {
-    ctx.strokeStyle = COLORS.GRID_LINE; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.05)'; ctx.lineWidth = 1;
     for (let i = 0; i < 40; i++) {
       let z = (i * 250) - this.gridOffset; if (z < 0) z += 10000;
-      const pL = this.project({ x: -1000, y: z }); const pR = this.project({ x: 1000, y: z });
+      const pL = this.project({ x: -2000, y: z }); const pR = this.project({ x: 2000, y: z });
       if (pL.visible && pR.visible) { ctx.beginPath(); ctx.moveTo(pL.x, pL.y); ctx.lineTo(pR.x, pR.y); ctx.stroke(); }
     }
   }
