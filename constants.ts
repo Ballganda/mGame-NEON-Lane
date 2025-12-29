@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.133';
+export const GAME_VERSION = 'V0.0.134';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720;
@@ -21,7 +21,7 @@ export const BASE_SCROLL_SPEED = 250;
 export const UNIFIED_ENTITY_SPEED = 400;
 export const CONVERGENCE_Z = 600;
 export const BOSS_APPEAR_DISTANCE = 30000; 
-export const GATE_SPAWN_DISTANCE = 7200; // Increased spacing between gates
+export const GATE_SPAWN_DISTANCE = 9600; // Increased spacing between gates even more
 
 // Limits & Caps
 export const MAX_PARTICLES = 450;

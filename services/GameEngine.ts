@@ -1,3 +1,4 @@
+
 import { 
   CANVAS_HEIGHT, CANVAS_WIDTH, LANE_COUNT, COLORS, PLAYER_RADIUS, 
   BASE_SCROLL_SPEED, BOSS_APPEAR_DISTANCE, GATE_SPAWN_DISTANCE, GATE_HEIGHT, 
@@ -113,6 +114,7 @@ export class GameEngine {
     canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.changedTouches[0].clientX); }, { passive: false });
     canvas.addEventListener('touchend', () => { this.isTouching = false; this.touchTargetX = null; });
     canvas.addEventListener('mousedown', (e) => { if (this.state === GameState.PLAYING) handleMove(e.clientX); });
+    // Fix: Remove invalid access to e.isTouching on MouseEvent
     canvas.addEventListener('mousemove', (e) => { if (this.isTouching) handleMove(e.clientX); });
     canvas.addEventListener('mouseup', () => { this.isTouching = false; this.touchTargetX = null; });
     window.addEventListener('keydown', (e) => {
@@ -237,6 +239,17 @@ export class GameEngine {
         if (ent.isStuckToPlayer && ent.stickOffset) {
           ent.pos.x = this.player.pos.x + ent.stickOffset.x;
           ent.pos.y = this.player.pos.y + ent.stickOffset.y;
+          
+          // Guaranteed constant DPS to stuck enemies even if bullets are flying elsewhere
+          const passiveDmg = this.playerStats.damage * 0.5 * dt;
+          ent.hp -= passiveDmg;
+          if (ent.hp <= 0) {
+            ent.active = false;
+            this.createHitEffect(ent.pos, ent.type, 20);
+            SoundService.playExplosion(false);
+            this.score += (ent.scoreValue || 10);
+          }
+
           ent.stuckDamageTimer = (ent.stuckDamageTimer || 0) - dt;
           if (ent.stuckDamageTimer <= 0) {
             this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
@@ -282,6 +295,7 @@ export class GameEngine {
       if (!bullet.active) continue;
       
       let hit = false;
+      // Stuck enemies take priority for bullets
       const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer);
       for (const enemy of stuckEnemies) {
         if (!enemy.active) continue;
@@ -434,7 +448,7 @@ export class GameEngine {
 
   private checkCollision(a: Entity, b: Entity): boolean {
     const dx = a.pos.x - b.pos.x; const dy = a.pos.y - b.pos.y;
-    if (Math.abs(dy) > 100) return false;
+    if (Math.abs(dy) > 120) return false;
     const distSq = dx * dx + dy * dy; const rSum = a.radius + b.radius;
     return distSq < (rSum * rSum);
   }
@@ -520,8 +534,8 @@ export class GameEngine {
     ctx.save(); if (this.shakeTimer > 0) ctx.translate((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
     this.drawCityscape(ctx); this.drawGrid(ctx);
     
-    // Pulse calculation for lane lines
-    const linePulse = 0.5 + Math.sin(now / 300) * 0.2;
+    // Pulse calculation for lane lines - faster and more dynamic
+    const linePulse = 0.5 + Math.sin(now / 150) * 0.4;
 
     // Lane lines
     for (let i of [-1.5, -0.5, 0.5, 1.5]) {
@@ -537,19 +551,20 @@ export class GameEngine {
         ctx.save();
         const laneColor: string = isInner ? (COLORS as any).INNER_LANE_LINE : COLORS.LANE_BORDER;
         ctx.strokeStyle = laneColor; 
-        ctx.lineWidth = isInner ? 3 : 6;
+        ctx.lineWidth = isInner ? 4 : 8;
         
         // Neon Glow
-        const glowRadius = isInner ? (10 + linePulse * 15) : (15 + this.battleIntensity * 40 + linePulse * 20);
+        const glowRadius = isInner ? (15 + linePulse * 20) : (20 + this.battleIntensity * 50 + linePulse * 30);
         ctx.shadowBlur = glowRadius * pS.scale; 
         ctx.shadowColor = laneColor;
         
         ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); 
         
-        if (!isInner && this.battleIntensity > 0.2) {
-           ctx.lineWidth = 12;
-           ctx.globalAlpha = (this.battleIntensity * 0.4) + (linePulse * 0.2);
-           ctx.shadowBlur = (25 + this.battleIntensity * 60) * pS.scale;
+        // Intensity Bloom
+        if (!isInner) {
+           ctx.lineWidth = 14;
+           ctx.globalAlpha = (this.battleIntensity * 0.5) + (linePulse * 0.3);
+           ctx.shadowBlur = (30 + this.battleIntensity * 80) * pS.scale;
            ctx.stroke();
         }
         ctx.restore();
@@ -590,10 +605,10 @@ export class GameEngine {
         ctx.globalAlpha = bulletAlpha;
         ctx.fillStyle = ent.color; ctx.beginPath(); ctx.arc(proj.x, proj.y, ent.radius * proj.scale * bulletScale, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
-      } else if (ent.type === EntityType.PLAYER) {
-         // Skip, drawn via drawPlayer
       } else if (ent.type === EntityType.BOSS) {
          this.drawBoss(ctx, ent, proj);
+      } else if (ent.type === EntityType.PLAYER) {
+        // Handled in drawPlayer
       } else {
         ctx.fillStyle = ent.color; ctx.beginPath(); ctx.arc(proj.x, proj.y, ent.radius * proj.scale, 0, Math.PI * 2); ctx.fill();
       }
@@ -606,7 +621,7 @@ export class GameEngine {
 
   private drawBoss(ctx: CanvasRenderingContext2D, ent: Entity, proj: { x: number, y: number, scale: number }) {
     const r = ent.radius * proj.scale;
-    ctx.save(); ctx.shadowBlur = 40; ctx.shadowColor = COLORS.BOSS;
+    ctx.save(); ctx.shadowBlur = 60 * proj.scale; ctx.shadowColor = COLORS.BOSS;
     ctx.fillStyle = COLORS.BOSS; ctx.beginPath();
     ctx.moveTo(proj.x, proj.y - r * 1.5);
     ctx.lineTo(proj.x + r, proj.y);
@@ -619,8 +634,11 @@ export class GameEngine {
   private drawPlayer(ctx: CanvasRenderingContext2D) {
     const proj = this.project(this.player.pos); if (!proj.visible) return;
     const r = this.player.radius * proj.scale;
+    ctx.save();
+    ctx.shadowBlur = 30 * proj.scale; ctx.shadowColor = COLORS.PLAYER;
     ctx.fillStyle = COLORS.PLAYER; ctx.beginPath(); ctx.moveTo(proj.x, proj.y - r * 2); ctx.lineTo(proj.x + r, proj.y + r); ctx.lineTo(proj.x - r, proj.y + r); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = `bold 28px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(Math.floor(this.playerStats.projectileCount).toString(), proj.x, proj.y + 60);
+    ctx.restore();
   }
 
   private drawCityscape(ctx: CanvasRenderingContext2D) {
@@ -647,8 +665,9 @@ export class GameEngine {
     
     ctx.save();
     ctx.strokeStyle = color; 
-    ctx.lineWidth = 3;
-    ctx.shadowBlur = 25 * pIF.scale;
+    ctx.lineWidth = 4;
+    // Enhanced Building Bloom
+    ctx.shadowBlur = 40 * pIF.scale;
     ctx.shadowColor = color;
     
     // Top face
@@ -663,9 +682,15 @@ export class GameEngine {
     ctx.beginPath();
     ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - bHeight * pIF.scale);
     ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
-    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
+    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIF.scale);
     ctx.moveTo(pOB.x, pOB.y); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
     ctx.stroke();
+
+    // Secondary Bloom Overlay for extreme glow
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 10;
+    ctx.stroke();
+    
     ctx.restore();
   }
 
