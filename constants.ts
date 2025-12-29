@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.138';
+export const GAME_VERSION = 'V0.0.139';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720;
@@ -24,22 +24,23 @@ export const BOSS_APPEAR_DISTANCE = 30000;
 export const GATE_SPAWN_DISTANCE = 16000; 
 
 // Squad Visuals (1-2-3-4-3-2-1 Diamond)
+// Negative Z values place the squad BEHIND the player (closer to viewer/bottom of screen)
 export const MAX_SQUAD_DISPLAY = 16; 
 export const SQUAD_DOT_RADIUS = 5;
 export const SQUAD_OFFSETS = [
   { x: 0, z: 0 },       // Tip (Player position)
-  // Row 1
-  { x: -16, z: 28 }, { x: 16, z: 28 },
+  // Row 1 (Immediately behind)
+  { x: -14, z: -24 }, { x: 14, z: -24 },
   // Row 2
-  { x: -32, z: 56 }, { x: 0, z: 56 }, { x: 32, z: 56 },
-  // Row 3 (Widest)
-  { x: -48, z: 84 }, { x: -16, z: 84 }, { x: 16, z: 84 }, { x: 48, z: 84 },
+  { x: -28, z: -48 }, { x: 0, z: -48 }, { x: 28, z: -48 },
+  // Row 3 (Widest / Inner Section)
+  { x: -42, z: -72 }, { x: -14, z: -72 }, { x: 14, z: -72 }, { x: 42, z: -72 },
   // Row 4
-  { x: -32, z: 112 }, { x: 0, z: 112 }, { x: 32, z: 112 },
+  { x: -28, z: -96 }, { x: 0, z: -96 }, { x: 28, z: -96 },
   // Row 5
-  { x: -16, z: 140 }, { x: 16, z: 140 },
+  { x: -14, z: -120 }, { x: 14, z: -120 },
   // Row 6 (Tail)
-  { x: 0, z: 168 }
+  { x: 0, z: -144 }
 ];
 
 // Limits & Caps

@@ -618,8 +618,11 @@ export class GameEngine {
       }
     }
 
+    // Squad is drawn behind player, so we draw it first
     this.drawSquad(ctx);
+    // Player ship leads, drawn on top
     this.drawPlayer(ctx); 
+    
     this.drawSnow(ctx);
     if (this.flashTimer > 0 && this.flashColor) { ctx.fillStyle = this.flashColor; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); }
     ctx.restore();
@@ -638,13 +641,13 @@ export class GameEngine {
     if (!projPlayer.visible) return;
 
     const count = Math.floor(this.playerStats.projectileCount);
-    // Draw only up to MAX_SQUAD_DISPLAY (16)
     const displayedCount = Math.min(count, MAX_SQUAD_DISPLAY);
 
     ctx.save();
     // Start from index 1 (0 is the player tip)
     for (let i = 1; i < displayedCount; i++) {
         const offset = SQUAD_OFFSETS[i];
+        // Now Z offsets are negative, forming BEHIND the player tip
         const squadWorldPos = { 
             x: this.player.pos.x + offset.x, 
             y: this.player.pos.y + offset.z 
@@ -670,6 +673,7 @@ export class GameEngine {
     ctx.shadowBlur = 40 * proj.scale; ctx.shadowColor = COLORS.PLAYER;
     ctx.fillStyle = COLORS.PLAYER; 
     
+    // Distinct ship shape leading the diamond tip
     ctx.beginPath(); 
     ctx.moveTo(proj.x, proj.y - r * 2.5); 
     ctx.lineTo(proj.x + r * 1.5, proj.y + r); 
@@ -724,7 +728,7 @@ export class GameEngine {
     
     ctx.beginPath();
     ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - bHeight * pIF.scale);
-    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pIF.scale);
+    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
     ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
     ctx.moveTo(pOB.x, pOB.y); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
     ctx.stroke();
