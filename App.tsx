@@ -68,6 +68,11 @@ export default function App() {
     StorageService.saveConfig(newConfig);
   };
 
+  // Helper to ensure spaces are not collapsed by React
+  const padValue = (val: number, len: number) => {
+    return String(val).padStart(len, '\u00A0');
+  };
+
   return (
     <div className="relative w-full h-screen bg-neutral-900 overflow-hidden select-none">
       <GameCanvas 
@@ -81,9 +86,9 @@ export default function App() {
       <div className="absolute top-1 left-2 text-[10px] text-white/40 font-mono pointer-events-none z-50 flex space-x-2 whitespace-pre">
         <span>{GAME_VERSION}</span>
         <span className="opacity-30">|</span>
-        <span>{String(stats.fps).padStart(3, ' ')} FPS</span>
+        <span>{padValue(stats.fps, 3)} FPS</span>
         <span className="opacity-30">|</span>
-        <span>{String(stats.activeEntities).padStart(4, ' ')} ENT</span>
+        <span>{padValue(stats.activeEntities, 4)} ENT</span>
       </div>
 
       <UIOverlay 

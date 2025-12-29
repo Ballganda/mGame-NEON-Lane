@@ -34,7 +34,7 @@ export const UIOverlay: React.FC<UIProps> = ({
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 p-6 pointer-events-auto bg-black/60 backdrop-blur-sm">
         <div className="flex flex-col items-center mb-16 text-center">
-          <h1 className="text-7xl font-black text-cyan-400 title-font tracking-tighter drop-shadow-[0_0_20px_rgba(0,240,255,0.8)] leading-none italic uppercase">
+          <h1 className="text-7xl font-black text-cyan-400 title-font tracking-tighter drop-shadow-[0_0_20px_rgba(0,240,255,0.8)] leading-none uppercase">
             NEON<br/><span className="text-white not-italic">LANE</span>
           </h1>
         </div>
@@ -64,22 +64,22 @@ export const UIOverlay: React.FC<UIProps> = ({
         {/* Top Header */}
         <div className="flex justify-between items-start">
             <div className="flex flex-col items-start">
-                <div className="text-white font-mono text-6xl font-black tracking-tight drop-shadow-lg">
+                <div className="text-white font-mono text-4xl font-black tracking-tight drop-shadow-lg">
                    {String(stats.score).padStart(6, '0')}
                 </div>
-                <div className="flex flex-col mt-2">
-                    <div className="text-cyan-400 font-mono text-2xl font-bold">{stats.distance}m</div>
-                    <div className="text-red-500 font-mono text-xl font-bold">{stats.dps} DPS</div>
+                <div className="flex flex-col mt-1">
+                    <div className="text-cyan-400 font-mono text-xl font-bold">{stats.distance}m</div>
+                    <div className="text-red-500 font-mono text-lg font-bold">{stats.dps} DPS</div>
                 </div>
             </div>
             
             <button 
               onClick={() => onNavigate(GameState.PAUSED)} 
-              className="pointer-events-auto bg-black/40 p-4 rounded-none border border-white/20 hover:bg-white/10 transition-colors"
+              className="pointer-events-auto bg-black/40 p-3 rounded-none border border-white/20 hover:bg-white/10 transition-colors"
             >
-                <div className="flex space-x-1.5">
-                    <div className="w-1.5 h-4 bg-white"></div>
-                    <div className="w-1.5 h-4 bg-white"></div>
+                <div className="flex space-x-1">
+                    <div className="w-1 h-3 bg-white"></div>
+                    <div className="w-1 h-3 bg-white"></div>
                 </div>
             </button>
         </div>

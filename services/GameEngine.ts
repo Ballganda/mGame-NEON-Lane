@@ -4,7 +4,7 @@ import {
   HORIZON_Y, UNIFIED_ENTITY_SPEED, GRID_SPEED, WORLD_LANE_WIDTH, CAMERA_DEPTH, SPAWN_Z, PLAYER_Z, CONVERGENCE_Z,
   ENEMY_RADIUS_GRUNT, ENEMY_RADIUS_SPRINTER, ENEMY_RADIUS_TANK, MAX_PARTICLES, MAX_VISIBLE_SQUAD, MAX_PROJECTILES_PER_SHOT, BULLET_COLORS, BULLET_RADIUS, VIEWPORT_BOTTOM_OFFSET, TOTAL_WORLD_WIDTH, BASE_PLAYER_SPEED, SQUAD_SPREAD_WIDTH, STUCK_DAMAGE_INTERVAL,
   CITY_BLOCK_SIZE, CITY_STREET_WIDTH, DRAW_DISTANCE, MAX_SPREAD_ANGLE_DEG, BULLET_MAX_RANGE, BULLET_FADE_START,
-  PICKUP_RADIUS
+  PICKUP_RADIUS, MAX_SQUAD_DISPLAY, SQUAD_OFFSETS, SQUAD_DOT_RADIUS
 } from '../constants.ts';
 import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types.ts';
 import { SoundService } from './SoundService.ts';
@@ -130,11 +130,24 @@ export class GameEngine {
     this.score = 0; this.distance = 0; this.wave = 1; this.battleIntensity = 0;
     this.playerStats.projectileCount = 1; this.player.active = true;
     this.player.pos.x = 0; this.touchTargetX = null; this.isTouching = false;
+    
     this.lastGateDistance = -GATE_SPAWN_DISTANCE + 1000; 
     this.spawnTimer = 0.2; 
     this.shootTimer = 0;
     this.shakeTimer = 0; this.flashTimer = 0; this.bossActive = false; this.bossEntity = null;
     this.nextBossDistance = BOSS_APPEAR_DISTANCE; this.gridOffset = 0;
+
+    const spawnStart = 800;
+    const spawnEnd = 4000;
+    
+    this.spawnGateRowAtZ(spawnStart + 500);
+    this.spawnGateRowAtZ(spawnStart + 2500);
+
+    for (let i = 0; i < 8; i++) {
+        const laneX = this.getLaneWorldX(Math.floor(Math.random() * LANE_COUNT));
+        const z = spawnStart + Math.random() * (spawnEnd - spawnStart);
+        this.spawnEntity(EntityType.ENEMY_GRUNT, laneX, z, ENEMY_RADIUS_GRUNT, 20, 10);
+    }
   }
 
   public setGameState(newState: GameState) {
@@ -238,8 +251,7 @@ export class GameEngine {
           ent.pos.x = this.player.pos.x + ent.stickOffset.x;
           ent.pos.y = this.player.pos.y + ent.stickOffset.y;
           
-          // Guaranteed constant passive DPS from player to stuck enemy
-          const passiveDmg = (this.playerStats.damage * 1.5) * dt; // Significant passive DPS
+          const passiveDmg = (this.playerStats.damage * 1.5) * dt;
           ent.hp -= passiveDmg;
           if (ent.hp <= 0) {
             ent.active = false;
@@ -432,13 +444,17 @@ export class GameEngine {
   }
 
   private spawnGateRow() {
+    this.spawnGateRowAtZ(SPAWN_Z);
+  }
+
+  private spawnGateRowAtZ(z: number) {
     const goodLane = Math.floor(Math.random() * LANE_COUNT);
     for (let i = 0; i < LANE_COUNT; i++) {
       const op = Math.random() > 0.6 ? GateOp.MULTIPLY : GateOp.ADD;
       let val = (i === goodLane) ? (op === GateOp.MULTIPLY ? 2 : 5) : (op === GateOp.MULTIPLY ? 0.5 : -3);
       const beneficial = (op === GateOp.MULTIPLY && val >= 1) || (op === GateOp.ADD && val >= 0);
       this.entities.push({
-        id: Math.random(), type: EntityType.GATE, pos: { x: this.getLaneWorldX(i), y: SPAWN_Z }, radius: 50, active: true, hp: 1, maxHp: 1, color: beneficial ? COLORS.GATE_POS_BG : COLORS.GATE_NEG_BG, lane: i, gateData: { type: GateType.PROJECTILES, op, value: val }, width: WORLD_LANE_WIDTH - 10, height: GATE_HEIGHT
+        id: Math.random(), type: EntityType.GATE, pos: { x: this.getLaneWorldX(i), y: z }, radius: 50, active: true, hp: 1, maxHp: 1, color: beneficial ? COLORS.GATE_POS_BG : COLORS.GATE_NEG_BG, lane: i, gateData: { type: GateType.PROJECTILES, op, value: val }, width: WORLD_LANE_WIDTH - 10, height: GATE_HEIGHT
       });
     }
   }
@@ -531,10 +547,8 @@ export class GameEngine {
     ctx.save(); if (this.shakeTimer > 0) ctx.translate((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
     this.drawCityscape(ctx); this.drawGrid(ctx);
     
-    // Pulse calculation for lane lines
     const linePulse = 0.5 + Math.sin(now / 150) * 0.4;
 
-    // Lane lines
     for (let i of [-1.5, -0.5, 0.5, 1.5]) {
       const isInner = i === -0.5 || i === 0.5;
       const lx = i * WORLD_LANE_WIDTH;
@@ -598,13 +612,15 @@ export class GameEngine {
       } else if (ent.type === EntityType.BOSS) {
          this.drawBoss(ctx, ent, proj);
       } else if (ent.type === EntityType.PLAYER) {
-        // Handled in drawPlayer
+        // Handled via drawPlayer/drawSquad
       } else {
         ctx.fillStyle = ent.color; ctx.beginPath(); ctx.arc(proj.x, proj.y, ent.radius * proj.scale, 0, Math.PI * 2); ctx.fill();
       }
     }
 
-    this.drawPlayer(ctx); this.drawSnow(ctx);
+    this.drawSquad(ctx);
+    this.drawPlayer(ctx); 
+    this.drawSnow(ctx);
     if (this.flashTimer > 0 && this.flashColor) { ctx.fillStyle = this.flashColor; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); }
     ctx.restore();
   }
@@ -617,13 +633,58 @@ export class GameEngine {
     ctx.closePath(); ctx.fill(); ctx.restore();
   }
 
+  private drawSquad(ctx: CanvasRenderingContext2D) {
+    const projPlayer = this.project(this.player.pos);
+    if (!projPlayer.visible) return;
+
+    const count = Math.floor(this.playerStats.projectileCount);
+    // Draw only up to MAX_SQUAD_DISPLAY (16)
+    const displayedCount = Math.min(count, MAX_SQUAD_DISPLAY);
+
+    ctx.save();
+    // Start from index 1 (0 is the player tip)
+    for (let i = 1; i < displayedCount; i++) {
+        const offset = SQUAD_OFFSETS[i];
+        const squadWorldPos = { 
+            x: this.player.pos.x + offset.x, 
+            y: this.player.pos.y + offset.z 
+        };
+        const proj = this.project(squadWorldPos);
+        if (proj.visible) {
+            const r = SQUAD_DOT_RADIUS * proj.scale;
+            ctx.fillStyle = COLORS.PLAYER;
+            ctx.shadowBlur = 15 * proj.scale;
+            ctx.shadowColor = COLORS.PLAYER;
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+  }
+
   private drawPlayer(ctx: CanvasRenderingContext2D) {
     const proj = this.project(this.player.pos); if (!proj.visible) return;
     const r = this.player.radius * proj.scale;
     ctx.save();
-    ctx.shadowBlur = 30 * proj.scale; ctx.shadowColor = COLORS.PLAYER;
-    ctx.fillStyle = COLORS.PLAYER; ctx.beginPath(); ctx.moveTo(proj.x, proj.y - r * 2); ctx.lineTo(proj.x + r, proj.y + r); ctx.lineTo(proj.x - r, proj.y + r); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = `bold 28px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(Math.floor(this.playerStats.projectileCount).toString(), proj.x, proj.y + 60);
+    ctx.shadowBlur = 40 * proj.scale; ctx.shadowColor = COLORS.PLAYER;
+    ctx.fillStyle = COLORS.PLAYER; 
+    
+    ctx.beginPath(); 
+    ctx.moveTo(proj.x, proj.y - r * 2.5); 
+    ctx.lineTo(proj.x + r * 1.5, proj.y + r); 
+    ctx.lineTo(proj.x - r * 1.5, proj.y + r); 
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(proj.x, proj.y - r * 1.8);
+    ctx.lineTo(proj.x + r * 0.8, proj.y + r * 0.4);
+    ctx.lineTo(proj.x - r * 0.8, proj.y + r * 0.4);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#fff'; ctx.font = `bold 28px Orbitron`; ctx.textAlign = 'center'; 
+    ctx.fillText(Math.floor(this.playerStats.projectileCount).toString(), proj.x, proj.y + 60);
     ctx.restore();
   }
 
@@ -653,31 +714,24 @@ export class GameEngine {
     ctx.strokeStyle = color; 
     ctx.lineWidth = 4;
     
-    // Scale glow with distance (pIF.scale is higher when closer)
-    const baseGlow = 10;
-    const maxGlow = 50;
-    ctx.shadowBlur = (baseGlow + (maxGlow - baseGlow) * pIF.scale);
+    const glowScale = 0.3 + 0.7 * pIF.scale; 
+    ctx.shadowBlur = 40 * glowScale;
     ctx.shadowColor = color;
     
-    // Top face
     ctx.beginPath();
     ctx.moveTo(pIF.x, pIF.y - bHeight * pIF.scale); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
     ctx.closePath(); ctx.stroke();
     
-    // Vertical corner lines
     ctx.beginPath();
     ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - bHeight * pIF.scale);
-    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
+    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pIF.scale);
     ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
     ctx.moveTo(pOB.x, pOB.y); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
     ctx.stroke();
 
-    // Subtle volumetric bloom overlay for nearby buildings
-    if (pIF.scale > 0.2) {
-      ctx.globalAlpha = 0.1 * pIF.scale;
-      ctx.lineWidth = 12 * pIF.scale;
-      ctx.stroke();
-    }
+    ctx.globalAlpha = 0.05 + 0.15 * pIF.scale;
+    ctx.lineWidth = 2 + 10 * pIF.scale;
+    ctx.stroke();
     
     ctx.restore();
   }

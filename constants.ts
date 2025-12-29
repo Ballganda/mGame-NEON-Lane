@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.136';
+export const GAME_VERSION = 'V0.0.138';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720;
@@ -21,7 +21,26 @@ export const BASE_SCROLL_SPEED = 250;
 export const UNIFIED_ENTITY_SPEED = 400;
 export const CONVERGENCE_Z = 600;
 export const BOSS_APPEAR_DISTANCE = 30000; 
-export const GATE_SPAWN_DISTANCE = 16000; // Even further spacing to satisfy "gates getting too close"
+export const GATE_SPAWN_DISTANCE = 16000; 
+
+// Squad Visuals (1-2-3-4-3-2-1 Diamond)
+export const MAX_SQUAD_DISPLAY = 16; 
+export const SQUAD_DOT_RADIUS = 5;
+export const SQUAD_OFFSETS = [
+  { x: 0, z: 0 },       // Tip (Player position)
+  // Row 1
+  { x: -16, z: 28 }, { x: 16, z: 28 },
+  // Row 2
+  { x: -32, z: 56 }, { x: 0, z: 56 }, { x: 32, z: 56 },
+  // Row 3 (Widest)
+  { x: -48, z: 84 }, { x: -16, z: 84 }, { x: 16, z: 84 }, { x: 48, z: 84 },
+  // Row 4
+  { x: -32, z: 112 }, { x: 0, z: 112 }, { x: 32, z: 112 },
+  // Row 5
+  { x: -16, z: 140 }, { x: 16, z: 140 },
+  // Row 6 (Tail)
+  { x: 0, z: 168 }
+];
 
 // Limits & Caps
 export const MAX_PARTICLES = 450;
