@@ -618,9 +618,7 @@ export class GameEngine {
       }
     }
 
-    // Squad is drawn behind player, so we draw it first
     this.drawSquad(ctx);
-    // Player ship leads, drawn on top
     this.drawPlayer(ctx); 
     
     this.drawSnow(ctx);
@@ -644,10 +642,8 @@ export class GameEngine {
     const displayedCount = Math.min(count, MAX_SQUAD_DISPLAY);
 
     ctx.save();
-    // Start from index 1 (0 is the player tip)
     for (let i = 1; i < displayedCount; i++) {
         const offset = SQUAD_OFFSETS[i];
-        // Now Z offsets are negative, forming BEHIND the player tip
         const squadWorldPos = { 
             x: this.player.pos.x + offset.x, 
             y: this.player.pos.y + offset.z 
@@ -673,7 +669,6 @@ export class GameEngine {
     ctx.shadowBlur = 40 * proj.scale; ctx.shadowColor = COLORS.PLAYER;
     ctx.fillStyle = COLORS.PLAYER; 
     
-    // Distinct ship shape leading the diamond tip
     ctx.beginPath(); 
     ctx.moveTo(proj.x, proj.y - r * 2.5); 
     ctx.lineTo(proj.x + r * 1.5, proj.y + r); 
@@ -697,44 +692,100 @@ export class GameEngine {
     const end = Math.floor((this.distance + DRAW_DISTANCE + 1000) / CITY_BLOCK_SIZE);
     for(let i = end; i >= start; i--) {
       const z = (i * CITY_BLOCK_SIZE) - this.distance;
-      this.drawBuilding(ctx, i, -1, z); this.drawBuilding(ctx, i, 1, z);
+      this.drawBuilding(ctx, i, -1, z); 
+      this.drawBuilding(ctx, i, 1, z);
     }
   }
 
   private drawBuilding(ctx: CanvasRenderingContext2D, index: number, side: number, zCenter: number) {
     const seed = Math.abs((index * 9301 + side * 49291) % 10000);
     const bWidth = 150 + (seed % 200);
-    const bHeight = 200 + (seed % 400);
+    const bHeight = 200 + (seed % 600);
     const zF = zCenter - 400; const zB = zCenter + 400;
     const xInner = side * CITY_STREET_WIDTH; const xOuter = xInner + (side * bWidth);
-    const pIF = this.project({ x: xInner, y: zF }); const pOF = this.project({ x: xOuter, y: zF });
-    const pIB = this.project({ x: xInner, y: zB }); const pOB = this.project({ x: xOuter, y: zB });
+    
+    // Corner point projections
+    const pIF = this.project({ x: xInner, y: zF }); 
+    const pOF = this.project({ x: xOuter, y: zF });
+    const pIB = this.project({ x: xInner, y: zB }); 
+    const pOB = this.project({ x: xOuter, y: zB });
+    
     if (!pIF.visible || !pIB.visible || !pOF.visible || !pOB.visible) return;
 
     const colors = ['#aa00ff', '#00ff00', '#ffff00', '#ff00ff', '#00ffff'];
-    const color = colors[index % colors.length];
+    const baseColor = colors[index % colors.length];
     
-    ctx.save();
-    ctx.strokeStyle = color; 
-    ctx.lineWidth = 4;
-    
-    const glowScale = 0.3 + 0.7 * pIF.scale; 
-    ctx.shadowBlur = 40 * glowScale;
-    ctx.shadowColor = color;
-    
-    ctx.beginPath();
-    ctx.moveTo(pIF.x, pIF.y - bHeight * pIF.scale); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
-    ctx.closePath(); ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - bHeight * pIF.scale);
-    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
-    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
-    ctx.moveTo(pOB.x, pOB.y); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
-    ctx.stroke();
+    // Define heights in projected space
+    const hIF = bHeight * pIF.scale;
+    const hOF = bHeight * pOF.scale;
+    const hIB = bHeight * pIB.scale;
+    const hOB = bHeight * pOB.scale;
 
-    ctx.globalAlpha = 0.05 + 0.15 * pIF.scale;
-    ctx.lineWidth = 2 + 10 * pIF.scale;
+    ctx.save();
+    
+    // Add glowing walls with fills
+    // Side Wall (Facing the street)
+    ctx.beginPath();
+    ctx.moveTo(pIF.x, pIF.y);
+    ctx.lineTo(pIF.x, pIF.y - hIF);
+    ctx.lineTo(pIB.x, pIB.y - hIB);
+    ctx.lineTo(pIB.x, pIB.y);
+    ctx.closePath();
+    ctx.fillStyle = `${baseColor}1A`; // Low alpha fill
+    ctx.fill();
+    
+    // Front Wall (Facing player)
+    ctx.beginPath();
+    ctx.moveTo(pIF.x, pIF.y);
+    ctx.lineTo(pIF.x, pIF.y - hIF);
+    ctx.lineTo(pOF.x, pOF.y - hOF);
+    ctx.lineTo(pOF.x, pOF.y);
+    ctx.closePath();
+    ctx.fillStyle = `${baseColor}33`; // Slightly more alpha for front
+    ctx.fill();
+
+    // Roof Plane
+    ctx.beginPath();
+    ctx.moveTo(pIF.x, pIF.y - hIF);
+    ctx.lineTo(pOF.x, pOF.y - hOF);
+    ctx.lineTo(pOB.x, pOB.y - hOB);
+    ctx.lineTo(pIB.x, pIB.y - hIB);
+    ctx.closePath();
+    ctx.fillStyle = `${baseColor}4D`; // Roof alpha
+    ctx.fill();
+
+    // Wall Texture (Grid/Windows)
+    ctx.strokeStyle = `${baseColor}22`;
+    ctx.lineWidth = 1;
+    // Front face windows
+    const windowRows = 5;
+    for (let r = 1; r < windowRows; r++) {
+       const t = r / windowRows;
+       ctx.beginPath();
+       ctx.moveTo(pIF.x, pIF.y - hIF * t);
+       ctx.lineTo(pOF.x, pOF.y - hOF * t);
+       ctx.stroke();
+    }
+
+    // Neon Edges
+    ctx.strokeStyle = baseColor; 
+    ctx.lineWidth = 3 * pIF.scale + 1;
+    ctx.shadowBlur = 20 * pIF.scale;
+    ctx.shadowColor = baseColor;
+    
+    // Stroke the visible structure
+    ctx.beginPath();
+    // Top box
+    ctx.moveTo(pIF.x, pIF.y - hIF); 
+    ctx.lineTo(pOF.x, pOF.y - hOF); 
+    ctx.lineTo(pOB.x, pOB.y - hOB); 
+    ctx.lineTo(pIB.x, pIB.y - hIB);
+    ctx.closePath();
+    
+    // Vertical pillars
+    ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - hIF);
+    ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - hOF);
+    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - hIB);
     ctx.stroke();
     
     ctx.restore();

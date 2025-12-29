@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas.tsx';
 import { UIOverlay } from './components/UIOverlay.tsx';
 import { GameState, GameConfig, PlayerStats } from './types.ts';
@@ -9,6 +9,7 @@ import { BASE_PLAYER_SPEED, GAME_VERSION } from './constants.ts';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+  const [previousState, setPreviousState] = useState<GameState>(GameState.MENU);
   const [config, setConfig] = useState<GameConfig>(StorageService.loadConfig());
   
   // Game Stats for UI
@@ -93,6 +94,7 @@ export default function App() {
 
       <UIOverlay 
         gameState={gameState} 
+        previousState={previousState}
         stats={stats}
         config={config}
         onStart={startGame}
@@ -101,6 +103,10 @@ export default function App() {
         onToggleSetting={toggleSetting}
         onConfigChange={setConfig}
         onNavigate={(s) => {
+          if (s === GameState.SETTINGS) {
+            setPreviousState(gameState);
+          }
+          
           if (s === GameState.MENU && engineRef.current) {
             engineRef.current.initGame();
             engineRef.current.setGameState(GameState.MENU);

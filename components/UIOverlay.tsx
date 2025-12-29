@@ -4,6 +4,7 @@ import { StorageService } from '../services/StorageService.ts';
 
 interface UIProps {
   gameState: GameState;
+  previousState: GameState;
   stats: any;
   config: GameConfig;
   onStart: () => void;
@@ -25,7 +26,7 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 };
 
 export const UIOverlay: React.FC<UIProps> = ({ 
-  gameState, stats, config, 
+  gameState, previousState, stats, config, 
   onStart, onResume, onRestart, onToggleSetting, onNavigate, onConfigChange
 }) => {
   const highScore = StorageService.getHighScore();
@@ -102,10 +103,16 @@ export const UIOverlay: React.FC<UIProps> = ({
   if (gameState === GameState.PAUSED) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 backdrop-blur-md pointer-events-auto">
-        <h2 className="text-6xl font-black text-white mb-16 title-font tracking-widest italic">PAUSED</h2>
-        <div className="flex flex-col space-y-6 w-72">
-          <button onClick={onResume} className="bg-white text-black font-black py-5 rounded-none text-2xl uppercase tracking-widest active:scale-95">RESUME</button>
-          <button onClick={() => onNavigate(GameState.MENU)} className="bg-transparent border border-white/20 text-white/50 font-bold py-5 rounded-none text-xl uppercase tracking-widest hover:text-white transition-all">MAIN MENU</button>
+        <h2 className="text-6xl font-black text-white mb-12 title-font tracking-widest italic">PAUSED</h2>
+        <div className="flex flex-col space-y-4 w-72">
+          <button onClick={onResume} className="bg-white text-black font-black py-4 rounded-none text-2xl uppercase tracking-widest active:scale-95">RESUME</button>
+          <button 
+            onClick={() => onNavigate(GameState.SETTINGS)} 
+            className="bg-[#1a1c25] text-white/70 font-bold py-4 rounded-none text-xl uppercase tracking-widest hover:text-white transition-colors"
+          >
+            SETTINGS
+          </button>
+          <button onClick={() => onNavigate(GameState.MENU)} className="bg-transparent border border-white/20 text-white/50 font-bold py-4 rounded-none text-xl uppercase tracking-widest hover:text-white transition-all">MAIN MENU</button>
         </div>
       </div>
     );
@@ -135,7 +142,7 @@ export const UIOverlay: React.FC<UIProps> = ({
 
   if (gameState === GameState.SETTINGS) {
     return (
-        <div className="absolute inset-0 bg-black z-20 flex flex-col p-6 pointer-events-auto overflow-hidden">
+        <div className="absolute inset-0 bg-black z-40 flex flex-col p-6 pointer-events-auto overflow-hidden">
             <div className="flex justify-center items-center mb-6 mt-4">
               <h2 className="text-4xl font-black text-white title-font tracking-widest uppercase">SETTINGS</h2>
             </div>
@@ -183,7 +190,7 @@ export const UIOverlay: React.FC<UIProps> = ({
 
             <div className="mt-auto mb-4 text-center">
               <button 
-                onClick={() => onNavigate(GameState.MENU)} 
+                onClick={() => onNavigate(previousState)} 
                 className="w-full max-w-md py-5 bg-[#1a1c25] text-white font-black text-xl uppercase tracking-widest hover:bg-[#252835] transition-colors border border-white/5"
               >
                 BACK
