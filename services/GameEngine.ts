@@ -1,11 +1,12 @@
+
 import { 
   CANVAS_HEIGHT, CANVAS_WIDTH, LANE_COUNT, COLORS, PLAYER_RADIUS, 
   BASE_SCROLL_SPEED, BOSS_APPEAR_DISTANCE, GATE_SPAWN_DISTANCE, GATE_HEIGHT, 
   HORIZON_Y, UNIFIED_ENTITY_SPEED, GRID_SPEED, WORLD_LANE_WIDTH, CAMERA_DEPTH, SPAWN_Z, PLAYER_Z, CONVERGENCE_Z,
   ENEMY_RADIUS_GRUNT, ENEMY_RADIUS_SPRINTER, ENEMY_RADIUS_TANK, MAX_PARTICLES, MAX_VISIBLE_SQUAD, MAX_PROJECTILES_PER_SHOT, BULLET_COLORS, BULLET_RADIUS, VIEWPORT_BOTTOM_OFFSET, TOTAL_WORLD_WIDTH, BASE_PLAYER_SPEED, SQUAD_SPREAD_WIDTH, STUCK_DAMAGE_INTERVAL,
   CITY_BLOCK_SIZE, CITY_STREET_WIDTH, DRAW_DISTANCE, MAX_SPREAD_ANGLE_DEG, BULLET_MAX_RANGE, BULLET_FADE_START
-} from '../constants';
-import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types';
+} from '../constants.ts';
+import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types.ts';
 
 interface SnowParticle {
   x: number;
@@ -390,8 +391,8 @@ export class GameEngine {
         }
       }
       if (!bullet.active) continue;
-      const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer && e.active);
-      const normalEnemies = this.enemies.filter(e => !e.isStuckToPlayer && e.active);
+      const stuckEnemies = this.enemies.filter(e => e.active && e.isStuckToPlayer);
+      const normalEnemies = this.enemies.filter(e => e.active && !e.isStuckToPlayer);
       const checkList = [...stuckEnemies, ...normalEnemies];
       for (const enemy of checkList) {
         if (!enemy.active) continue;

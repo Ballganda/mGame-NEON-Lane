@@ -1,7 +1,8 @@
+
 import React, { useEffect, useRef } from 'react';
-import { GameEngine } from '../services/GameEngine';
-import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../constants';
-import { GameConfig, PlayerStats } from '../types';
+import { GameEngine } from '../services/GameEngine.ts';
+import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../constants.ts';
+import { GameConfig, PlayerStats } from '../types.ts';
 
 interface GameCanvasProps {
   config: GameConfig;

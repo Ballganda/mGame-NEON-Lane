@@ -1,6 +1,7 @@
+
 import React from 'react';
-import { GameState, GameConfig, Difficulty } from '../types';
-import { StorageService } from '../services/StorageService';
+import { GameState, GameConfig, Difficulty } from '../types.ts';
+import { StorageService } from '../services/StorageService.ts';
 
 interface UIProps {
   gameState: GameState;

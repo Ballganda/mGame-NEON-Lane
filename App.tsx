@@ -1,10 +1,11 @@
+
 import React, { useState, useCallback, useRef } from 'react';
-import { GameCanvas } from './components/GameCanvas';
-import { UIOverlay } from './components/UIOverlay';
-import { GameState, GameConfig, PlayerStats } from './types';
-import { StorageService } from './services/StorageService';
-import { GameEngine } from './services/GameEngine';
-import { BASE_PLAYER_SPEED, GAME_VERSION } from './constants';
+import { GameCanvas } from './components/GameCanvas.tsx';
+import { UIOverlay } from './components/UIOverlay.tsx';
+import { GameState, GameConfig, PlayerStats } from './types.ts';
+import { StorageService } from './services/StorageService.ts';
+import { GameEngine } from './services/GameEngine.ts';
+import { BASE_PLAYER_SPEED, GAME_VERSION } from './constants.ts';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
