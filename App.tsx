@@ -43,9 +43,8 @@ export default function App() {
     if (engineRef.current) {
       engineRef.current.playerStats = getInitialStats(); 
       engineRef.current.initGame(); 
-      // Explicitly start playing
       engineRef.current.setGameState(GameState.PLAYING);
-      engineRef.current.start(); // Ensure loop is running
+      engineRef.current.start();
     }
     setGameState(GameState.PLAYING);
   };
@@ -90,10 +89,9 @@ export default function App() {
         onConfigChange={setConfig}
         onNavigate={(s) => {
           if (s === GameState.MENU && engineRef.current) {
-            // Instead of stopping fully, reset to idle menu state
             engineRef.current.initGame();
             engineRef.current.setGameState(GameState.MENU);
-            engineRef.current.start(); // Ensure loop runs for idle background
+            engineRef.current.start();
           } else if (s === GameState.PAUSED && engineRef.current) {
             engineRef.current.pause();
           }
