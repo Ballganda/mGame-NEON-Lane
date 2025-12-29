@@ -4,13 +4,14 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: './', // Ensures assets are resolved correctly in subdirectories like ballganda.github.io/mGame-NEON-Lane/
   server: {
     host: true
   },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: false
+    sourcemap: false,
+    minify: 'terser'
   }
 });
