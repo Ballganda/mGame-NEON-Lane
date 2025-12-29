@@ -570,20 +570,44 @@ export class GameEngine {
   }
 
   private createHitEffect(pos: Vector2, sourceType: EntityType, countOverride?: number, colorOverride?: string) {
-    let count = countOverride || 5; 
-    if (this.config.reducedEffects) count = Math.ceil(count / 2);
-    let color = colorOverride || '#fff'; let shape = ParticleShape.CIRCLE;
-    if (sourceType === EntityType.ENEMY_GRUNT) color = COLORS.ENEMY_GRUNT;
-    else if (sourceType === EntityType.ENEMY_SPRINTER) { color = COLORS.ENEMY_SPRINTER; shape = ParticleShape.CIRCLE; }
-    else if (sourceType === EntityType.ENEMY_TANK) { color = COLORS.ENEMY_TANK; shape = ParticleShape.CIRCLE; }
-    else if (sourceType === EntityType.PLAYER) { color = COLORS.PLAYER; shape = ParticleShape.RING; }
+    let baseCount = countOverride || 5; 
+    let color = colorOverride || '#fff'; 
+    let shape = ParticleShape.CIRCLE;
+    let sizeMult = 1;
+    let countMult = 1;
+
+    if (sourceType === EntityType.ENEMY_GRUNT) {
+      color = COLORS.ENEMY_GRUNT;
+    } else if (sourceType === EntityType.ENEMY_SPRINTER) {
+      color = COLORS.ENEMY_SPRINTER;
+      sizeMult = 2;
+      countMult = 1.8;
+    } else if (sourceType === EntityType.ENEMY_TANK) {
+      color = COLORS.ENEMY_TANK;
+      sizeMult = 5;
+      countMult = 4;
+    } else if (sourceType === EntityType.PLAYER) {
+      color = COLORS.PLAYER;
+      shape = ParticleShape.RING;
+    }
     
-    for(let i=0; i<count; i++) {
-       const angle = Math.random()*Math.PI*2; const speed = 300 + Math.random()*500;
+    let finalCount = Math.floor(baseCount * countMult);
+    if (this.config.reducedEffects) finalCount = Math.ceil(finalCount / 2);
+    
+    for(let i=0; i<finalCount; i++) {
+       const angle = Math.random()*Math.PI*2; 
+       const speed = (300 + Math.random()*500) * (1 + (sizeMult - 1) * 0.25);
+       const pRadius = (Math.random()*5 + 3) * sizeMult;
+       
        this.particles.push({
-         id: Math.random(), type: EntityType.PARTICLE, pos: {x: pos.x, y: pos.y}, radius: Math.random()*5+3, width: Math.random()*5+3,
-         active: true, hp: 1, maxHp: 1, color, lane: -1, particleShape: shape, velocity: { x: Math.cos(angle)*speed, y: Math.sin(angle)*speed },
-         life: 0.6, maxLife: 0.6, rotation: Math.random()*Math.PI, rotationSpeed: (Math.random()-0.5)*12
+         id: Math.random(), type: EntityType.PARTICLE, pos: {x: pos.x, y: pos.y}, 
+         radius: pRadius, width: pRadius,
+         active: true, hp: 1, maxHp: 1, color, lane: -1, particleShape: shape, 
+         velocity: { x: Math.cos(angle)*speed, y: Math.sin(angle)*speed },
+         life: 0.6 * (1 + (sizeMult - 1) * 0.1), 
+         maxLife: 0.6 * (1 + (sizeMult - 1) * 0.1), 
+         rotation: Math.random()*Math.PI, 
+         rotationSpeed: (Math.random()-0.5)*12
        });
     }
   }

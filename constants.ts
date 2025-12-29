@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.115';
+export const GAME_VERSION = 'V0.0.116';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720; // Internal resolution width
@@ -22,7 +22,7 @@ export const BOSS_APPEAR_DISTANCE = 25000;
 export const GATE_SPAWN_DISTANCE = 4500; // Increased base distance
 
 // Limits & Caps
-export const MAX_PARTICLES = 250; // Increased for more hit effects
+export const MAX_PARTICLES = 600; // Increased to support 5x tank effects
 export const MAX_VISIBLE_SQUAD = 41; // Adjusted for Diamond shape (Centered Square Number: 1, 5, 13, 25, 41)
 export const MAX_PROJECTILES_PER_SHOT = 12; 
 
