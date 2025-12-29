@@ -7,13 +7,13 @@ export enum GameState {
 }
 
 export enum Difficulty {
-  EASY = 'EASY',             // "I have a life"
-  NORMAL = 'NORMAL',         // "Bring it on"
-  HARD = 'HARD',             // "I Like Pain"
-  UNFAIR = 'UNFAIR',         // "Unfair"
-  EMOTIONAL = 'EMOTIONAL',   // "Emotional Damage"
-  SINGULARITY = 'SINGULARITY', // "Singularity"
-  OMEGA = 'OMEGA'            // "Omega Protocol"
+  EASY = 'EASY',
+  NORMAL = 'NORMAL',
+  HARD = 'HARD',
+  UNFAIR = 'UNFAIR',
+  EMOTIONAL = 'EMOTIONAL',
+  SINGULARITY = 'SINGULARITY',
+  OMEGA = 'OMEGA'
 }
 
 export enum EntityType {
@@ -33,7 +33,8 @@ export enum PickupType {
   BOMB_SMALL = 'BOMB_SMALL',
   BOMB_MEDIUM = 'BOMB_MEDIUM',
   BOMB_LARGE = 'BOMB_LARGE',
-  CLUSTER = 'CLUSTER'
+  CLUSTER = 'CLUSTER',
+  SHIELD = 'SHIELD'
 }
 
 export enum GateType {
@@ -74,8 +75,7 @@ export interface Entity {
   hp: number;
   maxHp: number;
   color: string;
-  lane: number; // -1 if not lane bound
-  // Specific props
+  lane: number;
   velocity?: Vector2;
   damage?: number;
   scoreValue?: number;
@@ -83,15 +83,12 @@ export interface Entity {
   gateData?: GateData;
   width?: number;
   height?: number;
-  // Combat state
   isAttacking?: boolean;
   attackTimer?: number;
-  // New Sticky/Formation logic
   isStuckToPlayer?: boolean;
   stickOffset?: Vector2;
-  formationOffset?: number; // The X offset from player center this enemy tries to target
-  stuckDamageTimer?: number; // Timer for DoT when stuck
-  // Visuals
+  formationOffset?: number;
+  stuckDamageTimer?: number;
   particleShape?: ParticleShape;
   rotation?: number;
   rotationSpeed?: number;
@@ -101,7 +98,7 @@ export interface Entity {
 
 export interface PlayerStats {
   damage: number;
-  fireRate: number; // Shots per second
+  fireRate: number;
   maxHp: number;
   projectileCount: number;
   moveSpeed: number;
