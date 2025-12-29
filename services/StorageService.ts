@@ -1,4 +1,5 @@
-import { GameConfig, Difficulty } from '../types';
+
+import { GameConfig, Difficulty } from '../types.ts';
 
 const STORAGE_KEY_CONFIG = 'neon_runner_config_v2';
 
