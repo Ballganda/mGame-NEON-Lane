@@ -78,12 +78,12 @@ export default function App() {
       />
       
       {/* Persistent Top Overlay: Version | FPS | ENT */}
-      <div className="absolute top-1 left-2 text-[10px] text-white/40 font-mono pointer-events-none z-50 flex space-x-2">
+      <div className="absolute top-1 left-2 text-[10px] text-white/40 font-mono pointer-events-none z-50 flex space-x-2 whitespace-pre">
         <span>{GAME_VERSION}</span>
         <span className="opacity-30">|</span>
-        <span>{stats.fps} FPS</span>
+        <span>{String(stats.fps).padStart(3, ' ')} FPS</span>
         <span className="opacity-30">|</span>
-        <span>{stats.activeEntities} ENT</span>
+        <span>{String(stats.activeEntities).padStart(4, ' ')} ENT</span>
       </div>
 
       <UIOverlay 

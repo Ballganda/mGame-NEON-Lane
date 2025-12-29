@@ -1,4 +1,3 @@
-
 import { 
   CANVAS_HEIGHT, CANVAS_WIDTH, LANE_COUNT, COLORS, PLAYER_RADIUS, 
   BASE_SCROLL_SPEED, BOSS_APPEAR_DISTANCE, GATE_SPAWN_DISTANCE, GATE_HEIGHT, 
@@ -114,7 +113,6 @@ export class GameEngine {
     canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.changedTouches[0].clientX); }, { passive: false });
     canvas.addEventListener('touchend', () => { this.isTouching = false; this.touchTargetX = null; });
     canvas.addEventListener('mousedown', (e) => { if (this.state === GameState.PLAYING) handleMove(e.clientX); });
-    // Fix: Remove invalid access to e.isTouching on MouseEvent
     canvas.addEventListener('mousemove', (e) => { if (this.isTouching) handleMove(e.clientX); });
     canvas.addEventListener('mouseup', () => { this.isTouching = false; this.touchTargetX = null; });
     window.addEventListener('keydown', (e) => {
@@ -240,8 +238,8 @@ export class GameEngine {
           ent.pos.x = this.player.pos.x + ent.stickOffset.x;
           ent.pos.y = this.player.pos.y + ent.stickOffset.y;
           
-          // Guaranteed constant DPS to stuck enemies even if bullets are flying elsewhere
-          const passiveDmg = this.playerStats.damage * 0.5 * dt;
+          // Guaranteed constant passive DPS from player to stuck enemy
+          const passiveDmg = (this.playerStats.damage * 1.5) * dt; // Significant passive DPS
           ent.hp -= passiveDmg;
           if (ent.hp <= 0) {
             ent.active = false;
@@ -295,7 +293,6 @@ export class GameEngine {
       if (!bullet.active) continue;
       
       let hit = false;
-      // Stuck enemies take priority for bullets
       const stuckEnemies = this.enemies.filter(e => e.isStuckToPlayer);
       for (const enemy of stuckEnemies) {
         if (!enemy.active) continue;
@@ -534,7 +531,7 @@ export class GameEngine {
     ctx.save(); if (this.shakeTimer > 0) ctx.translate((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
     this.drawCityscape(ctx); this.drawGrid(ctx);
     
-    // Pulse calculation for lane lines - faster and more dynamic
+    // Pulse calculation for lane lines
     const linePulse = 0.5 + Math.sin(now / 150) * 0.4;
 
     // Lane lines
@@ -553,18 +550,16 @@ export class GameEngine {
         ctx.strokeStyle = laneColor; 
         ctx.lineWidth = isInner ? 4 : 8;
         
-        // Neon Glow
-        const glowRadius = isInner ? (15 + linePulse * 20) : (20 + this.battleIntensity * 50 + linePulse * 30);
+        const glowRadius = isInner ? (15 + linePulse * 25) : (25 + this.battleIntensity * 60 + linePulse * 40);
         ctx.shadowBlur = glowRadius * pS.scale; 
         ctx.shadowColor = laneColor;
         
         ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); 
         
-        // Intensity Bloom
         if (!isInner) {
-           ctx.lineWidth = 14;
-           ctx.globalAlpha = (this.battleIntensity * 0.5) + (linePulse * 0.3);
-           ctx.shadowBlur = (30 + this.battleIntensity * 80) * pS.scale;
+           ctx.lineWidth = 16;
+           ctx.globalAlpha = (this.battleIntensity * 0.5) + (linePulse * 0.4);
+           ctx.shadowBlur = (35 + this.battleIntensity * 90) * pS.scale;
            ctx.stroke();
         }
         ctx.restore();
@@ -580,18 +575,13 @@ export class GameEngine {
         const text = `${ent.gateData!.op === GateOp.MULTIPLY ? 'x' : '+'}${ent.gateData!.value}`;
         ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, 45 * proj.scale)}px Orbitron`; ctx.textAlign = 'center'; ctx.fillText(text, proj.x, proj.y - h / 2);
       } else if (ent.type === EntityType.PICKUP) {
-        const pulse = 0.8 + Math.sin(now / 150) * 0.2;
         const size = ent.radius * proj.scale * 1.5;
         ctx.save();
         ctx.translate(proj.x, proj.y);
         ctx.rotate(ent.rotation || 0);
-        ctx.shadowBlur = 25 * proj.scale * pulse;
-        ctx.shadowColor = ent.color;
-        ctx.fillStyle = ent.color;
-        ctx.fillRect(-size/2, -size/2, size, size);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2 * proj.scale;
-        ctx.strokeRect(-size/2, -size/2, size, size);
+        ctx.shadowBlur = 25 * proj.scale; ctx.shadowColor = ent.color;
+        ctx.fillStyle = ent.color; ctx.fillRect(-size/2, -size/2, size, size);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * proj.scale; ctx.strokeRect(-size/2, -size/2, size, size);
         ctx.restore();
       } else if (ent.type === EntityType.BULLET) {
         let bulletScale = 1.0;
@@ -623,11 +613,7 @@ export class GameEngine {
     const r = ent.radius * proj.scale;
     ctx.save(); ctx.shadowBlur = 60 * proj.scale; ctx.shadowColor = COLORS.BOSS;
     ctx.fillStyle = COLORS.BOSS; ctx.beginPath();
-    ctx.moveTo(proj.x, proj.y - r * 1.5);
-    ctx.lineTo(proj.x + r, proj.y);
-    ctx.lineTo(proj.x + r * 0.5, proj.y + r);
-    ctx.lineTo(proj.x - r * 0.5, proj.y + r);
-    ctx.lineTo(proj.x - r, proj.y);
+    ctx.moveTo(proj.x, proj.y - r * 1.5); ctx.lineTo(proj.x + r, proj.y); ctx.lineTo(proj.x + r * 0.5, proj.y + r); ctx.lineTo(proj.x - r * 0.5, proj.y + r); ctx.lineTo(proj.x - r, proj.y);
     ctx.closePath(); ctx.fill(); ctx.restore();
   }
 
@@ -666,30 +652,32 @@ export class GameEngine {
     ctx.save();
     ctx.strokeStyle = color; 
     ctx.lineWidth = 4;
-    // Enhanced Building Bloom
-    ctx.shadowBlur = 40 * pIF.scale;
+    
+    // Scale glow with distance (pIF.scale is higher when closer)
+    const baseGlow = 10;
+    const maxGlow = 50;
+    ctx.shadowBlur = (baseGlow + (maxGlow - baseGlow) * pIF.scale);
     ctx.shadowColor = color;
     
     // Top face
     ctx.beginPath();
-    ctx.moveTo(pIF.x, pIF.y - bHeight * pIF.scale);
-    ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
-    ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
-    ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
+    ctx.moveTo(pIF.x, pIF.y - bHeight * pIF.scale); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
     ctx.closePath(); ctx.stroke();
     
     // Vertical corner lines
     ctx.beginPath();
     ctx.moveTo(pIF.x, pIF.y); ctx.lineTo(pIF.x, pIF.y - bHeight * pIF.scale);
     ctx.moveTo(pOF.x, pOF.y); ctx.lineTo(pOF.x, pOF.y - bHeight * pOF.scale);
-    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIF.scale);
+    ctx.moveTo(pIB.x, pIB.y); ctx.lineTo(pIB.x, pIB.y - bHeight * pIB.scale);
     ctx.moveTo(pOB.x, pOB.y); ctx.lineTo(pOB.x, pOB.y - bHeight * pOB.scale);
     ctx.stroke();
 
-    // Secondary Bloom Overlay for extreme glow
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 10;
-    ctx.stroke();
+    // Subtle volumetric bloom overlay for nearby buildings
+    if (pIF.scale > 0.2) {
+      ctx.globalAlpha = 0.1 * pIF.scale;
+      ctx.lineWidth = 12 * pIF.scale;
+      ctx.stroke();
+    }
     
     ctx.restore();
   }
