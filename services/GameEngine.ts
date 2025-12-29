@@ -1,4 +1,3 @@
-
 import { 
   CANVAS_HEIGHT, CANVAS_WIDTH, LANE_COUNT, COLORS, PLAYER_RADIUS, 
   BASE_SCROLL_SPEED, BOSS_APPEAR_DISTANCE, GATE_SPAWN_DISTANCE, GATE_HEIGHT, 
@@ -7,6 +6,7 @@ import {
   CITY_BLOCK_SIZE, CITY_STREET_WIDTH, DRAW_DISTANCE, MAX_SPREAD_ANGLE_DEG, BULLET_MAX_RANGE, BULLET_FADE_START
 } from '../constants.ts';
 import { Entity, EntityType, GameState, Vector2, PickupType, PlayerStats, GameConfig, GateData, GateType, GateOp, Difficulty, ParticleShape } from '../types.ts';
+import { SoundService } from './SoundService.ts';
 
 interface SnowParticle {
   x: number;
@@ -51,6 +51,9 @@ export class GameEngine {
   private shootTimer: number = 0;
   private shakeTimer: number = 0;
   private bossActive: boolean = false;
+  private bossEntity: Entity | null = null;
+  private nextBossDistance: number = BOSS_APPEAR_DISTANCE;
+  
   private gridOffset: number = 0;
   private invulnerabilityTimer: number = 0;
 
@@ -178,6 +181,8 @@ export class GameEngine {
     this.shootTimer = 0;
     this.shakeTimer = 0;
     this.bossActive = false;
+    this.bossEntity = null;
+    this.nextBossDistance = BOSS_APPEAR_DISTANCE;
     this.gridOffset = 0;
   }
 
@@ -249,7 +254,8 @@ export class GameEngine {
         fps: this.fps,
         state: this.state,
         activeEntities: this.entities.length,
-        dps: Math.round(this.currentPotentialDps)
+        dps: Math.round(this.currentPotentialDps),
+        bossHp: this.bossEntity?.active ? (this.bossEntity.hp / this.bossEntity.maxHp) : null
       });
     }
     this.animationFrameId = requestAnimationFrame(this.loop);
@@ -271,7 +277,6 @@ export class GameEngine {
   private getEliteWeight(): number {
     const dps = this.currentPotentialDps || 0;
     if (dps < 25000) return 0;
-    // Linear scale from 0 to 1 between 25k and 250k DPS
     return Math.min(1.0, (dps - 25000) / 225000);
   }
 
@@ -308,6 +313,10 @@ export class GameEngine {
       this.shootTimer = 1 / this.playerStats.fireRate;
     }
 
+    if (this.distance > this.nextBossDistance && !this.bossActive) {
+      this.spawnBoss();
+    }
+
     if (!this.bossActive) this.spawnManager(dt);
 
     this.enemies = []; this.bullets = []; this.pickups = [];
@@ -316,12 +325,9 @@ export class GameEngine {
       const ent = this.entities[i];
       if (!ent.active) { this.entities.splice(i, 1); continue; }
       
-      // Cleanup entities far beyond the horizon
       if (ent.pos.y > DRAW_DISTANCE + 500) { ent.active = false; continue; }
       
-      // Bullet optimization & Range Limiting
       if (ent.type === EntityType.BULLET) {
-        // Hard limit at BULLET_MAX_RANGE (now 4000)
         if (ent.pos.y > BULLET_MAX_RANGE || Math.abs(ent.pos.x) > TOTAL_WORLD_WIDTH / 2 + 100) {
           ent.active = false;
           continue;
@@ -337,6 +343,9 @@ export class GameEngine {
       } else if (ent.type === EntityType.PICKUP) {
         ent.pos.y -= UNIFIED_ENTITY_SPEED * dt;
         this.pickups.push(ent);
+      } else if (ent.type === EntityType.BOSS) {
+        this.updateBoss(ent, dt);
+        this.enemies.push(ent);
       } else if (ent.type.startsWith('ENEMY')) {
         this.enemies.push(ent);
         if (ent.isStuckToPlayer && ent.stickOffset) {
@@ -347,6 +356,7 @@ export class GameEngine {
             this.playerStats.projectileCount = Math.max(0, this.playerStats.projectileCount - 1);
             this.createHitEffect(ent.pos, EntityType.PLAYER);
             if (this.config.hapticsEnabled) navigator.vibrate(50);
+            SoundService.playHit();
             ent.stuckDamageTimer = STUCK_DAMAGE_INTERVAL;
           }
         } else {
@@ -371,7 +381,7 @@ export class GameEngine {
             ent.active = false;
             this.applyPickup(ent.pickupType!, ent.pos);
           }
-        } else if (ent.type.startsWith('ENEMY') || ent.type === EntityType.OBSTACLE) {
+        } else if (ent.type.startsWith('ENEMY') || ent.type === EntityType.OBSTACLE || ent.type === EntityType.BOSS) {
           this.handleEnemyPlayerInteraction(ent);
         }
       }
@@ -381,9 +391,7 @@ export class GameEngine {
       if (!bullet.active) continue;
       for (const pickup of this.pickups) {
         if (!pickup.active) continue;
-        const zDiff = Math.abs(bullet.pos.y - pickup.pos.y);
-        const dx = Math.abs(bullet.pos.x - pickup.pos.x);
-        if (zDiff < 60 && dx < (bullet.radius + pickup.radius + 20)) {
+        if (this.checkCollision(bullet, pickup)) {
           bullet.active = false; pickup.active = false;
           this.applyPickup(pickup.pickupType!, pickup.pos);
           this.createHitEffect(pickup.pos, EntityType.PICKUP);
@@ -391,19 +399,21 @@ export class GameEngine {
         }
       }
       if (!bullet.active) continue;
-      const stuckEnemies = this.enemies.filter(e => e.active && e.isStuckToPlayer);
-      const normalEnemies = this.enemies.filter(e => e.active && !e.isStuckToPlayer);
-      const checkList = [...stuckEnemies, ...normalEnemies];
-      for (const enemy of checkList) {
+      for (const enemy of this.enemies) {
         if (!enemy.active) continue;
-        if (Math.abs(bullet.pos.y - enemy.pos.y) > 60) continue;
+        if (Math.abs(bullet.pos.y - enemy.pos.y) > 80) continue;
         if (this.checkCollision(bullet, enemy)) {
           bullet.active = false;
           enemy.hp -= (bullet.damage || 10);
           this.createHitEffect(enemy.pos, enemy.type, 15);
+          SoundService.playHit();
           if (enemy.hp <= 0) {
             enemy.active = false;
-            this.createHitEffect(enemy.pos, enemy.type, 30);
+            if (enemy.type === EntityType.BOSS) {
+                this.onBossDefeated();
+            }
+            this.createHitEffect(enemy.pos, enemy.type, 40);
+            SoundService.playExplosion(enemy.type === EntityType.ENEMY_TANK || enemy.type === EntityType.BOSS);
             this.score += (enemy.scoreValue || 10);
             if (this.config.hapticsEnabled) navigator.vibrate(10);
           }
@@ -430,6 +440,74 @@ export class GameEngine {
     }
   }
 
+  private spawnBoss() {
+    this.bossActive = true;
+    const hp = 2000 * this.wave * this.getDifficultyMultiplier();
+    const boss: Entity = {
+      id: Math.random(),
+      type: EntityType.BOSS,
+      pos: { x: 0, y: SPAWN_Z },
+      radius: 120,
+      active: true,
+      hp: hp,
+      maxHp: hp,
+      color: COLORS.BOSS,
+      lane: -1,
+      scoreValue: 5000 * this.wave,
+      attackTimer: 2,
+      isAttacking: false,
+      velocity: { x: 100, y: 0 }
+    };
+    this.bossEntity = boss;
+    this.entities.push(boss);
+  }
+
+  private updateBoss(boss: Entity, dt: number) {
+    // Entrance
+    if (boss.pos.y > 1500) {
+      boss.pos.y -= 300 * dt;
+    } else {
+      // Hover movement
+      boss.pos.y = 1500 + Math.sin(this.distance * 0.005) * 100;
+      if (boss.velocity) {
+        boss.pos.x += boss.velocity.x * dt;
+        if (Math.abs(boss.pos.x) > 250) boss.velocity.x *= -1;
+      }
+      
+      // Attacks
+      if (boss.attackTimer !== undefined) {
+        boss.attackTimer -= dt;
+        if (boss.attackTimer <= 0) {
+          this.bossFire(boss);
+          boss.attackTimer = Math.max(0.5, 3 - (this.wave * 0.2));
+        }
+      }
+    }
+  }
+
+  private bossFire(boss: Entity) {
+    const pX = this.player.pos.x;
+    const pY = this.player.pos.y;
+    const dx = pX - boss.pos.x;
+    const dy = pY - boss.pos.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > 0) {
+      const vx = (dx/dist) * 800;
+      const vy = (dy/dist) * 800;
+      // Large boss bullet logic would go here if we wanted special boss projectiles
+      // For now, we reuse the enemy patterns or just spawn small "homing" units
+      this.spawnEntity(EntityType.ENEMY_SPRINTER, boss.pos.x, boss.pos.y, ENEMY_RADIUS_SPRINTER, 50, 20);
+    }
+  }
+
+  private onBossDefeated() {
+    this.bossActive = false;
+    this.bossEntity = null;
+    this.nextBossDistance = this.distance + BOSS_APPEAR_DISTANCE;
+    this.spawnPickup(1, 1500);
+    this.shakeTimer = 1.0;
+  }
+
   private spawnManager(dt: number) {
     const minSpacing = GATE_SPAWN_DISTANCE + (this.wave * 120);
     if (this.distance - this.lastGateDistance > minSpacing) {
@@ -440,12 +518,9 @@ export class GameEngine {
     if (this.spawnTimer <= 0) {
       const eliteWeight = this.getEliteWeight();
       const pattern = Math.random();
-      
-      // Ramp logic: Elite patterns become more common at higher DPS
       if (pattern < 0.3 + (eliteWeight * 0.4)) this.spawnEliteWave();
       else if (pattern < 0.7) this.spawnArmyWave(); 
       else this.spawnSimpleGap();
-      
       this.spawnTimer = Math.max(0.6, 3.5 - Math.min(2.5, (this.wave * 0.1) + (eliteWeight * 0.5)));
     }
   }
@@ -455,7 +530,6 @@ export class GameEngine {
     const laneX = this.getLaneWorldX(targetLane);
     const diffMult = this.getDifficultyMultiplier();
     const eliteWeight = this.getEliteWeight();
-    
     let baseHp = (8 + (this.wave * 3.5)) * diffMult;
     let gridDepth = Math.min(40, 5 + Math.floor((this.currentPotentialDps || 0) / 80) + Math.floor(Math.random() * 4));
     const gridWidth = 5;
@@ -463,7 +537,6 @@ export class GameEngine {
     const startXOffset = -((gridWidth - 1) * spacingX) / 2;
     let currentZ = SPAWN_Z;
 
-    // Leader unit ramping
     if (Math.random() > 0.4 - (eliteWeight * 0.3)) {
       const type = Math.random() < 0.3 + eliteWeight ? EntityType.ENEMY_TANK : EntityType.ENEMY_SPRINTER;
       this.spawnEntity(type, laneX, currentZ, type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER, baseHp * 4, 50);
@@ -474,7 +547,6 @@ export class GameEngine {
       for (let col = 0; col < gridWidth; col++) {
         const x = laneX + startXOffset + (col * spacingX);
         const z = currentZ + (row * spacingZ);
-        // Occasionally spawn eliter units within the grid at high DPS
         const type = Math.random() < eliteWeight * 0.1 ? EntityType.ENEMY_SPRINTER : EntityType.ENEMY_GRUNT;
         this.spawnEntity(type, x + (Math.random()-0.5)*10, z + (Math.random()-0.5)*10, type === EntityType.ENEMY_SPRINTER ? ENEMY_RADIUS_SPRINTER : ENEMY_RADIUS_GRUNT, baseHp, 10);
       }
@@ -487,11 +559,8 @@ export class GameEngine {
     const type = Math.random() < 0.4 + (eliteWeight * 0.5) ? EntityType.ENEMY_TANK : EntityType.ENEMY_SPRINTER;
     const r = type === EntityType.ENEMY_TANK ? ENEMY_RADIUS_TANK : ENEMY_RADIUS_SPRINTER;
     const baseHp = (8 + (this.wave * 3.5)) * (type === EntityType.ENEMY_TANK ? 4 : 2) * this.getDifficultyMultiplier();
-    
-    // More lanes occupied at higher DPS
     for(let i=0; i<LANE_COUNT; i++) {
-        const spawnChance = 0.3 + (eliteWeight * 0.6);
-        if (Math.random() < spawnChance) {
+        if (Math.random() < 0.3 + (eliteWeight * 0.6)) {
             this.spawnEntity(type, this.getLaneWorldX(i), SPAWN_Z + Math.abs(i-1)*200, r, baseHp, 30);
         }
     }
@@ -514,6 +583,7 @@ export class GameEngine {
     let color = COLORS.ENEMY_GRUNT;
     if (type === EntityType.ENEMY_SPRINTER) color = COLORS.ENEMY_SPRINTER;
     if (type === EntityType.ENEMY_TANK) color = COLORS.ENEMY_TANK;
+    if (type === EntityType.BOSS) color = COLORS.BOSS;
     this.entities.push({
       id: Math.random(), type, pos: { x, y: z }, radius: r, active: true, hp, maxHp: hp, color, lane: -1, scoreValue: score,
       formationOffset: (Math.random() - 0.5) * SQUAD_SPREAD_WIDTH, stuckDamageTimer: 0
@@ -562,15 +632,21 @@ export class GameEngine {
   }
 
   private checkCollision(a: Entity, b: Entity): boolean {
-    const zDiff = Math.abs(a.pos.y - b.pos.y);
-    if (zDiff > 60) return false;
     const dx = a.pos.x - b.pos.x;
-    return Math.abs(dx) < (a.radius + b.radius);
+    const dy = a.pos.y - b.pos.y;
+    const distSq = dx*dx + dy*dy;
+    const rSum = a.radius + b.radius;
+    // We use a slight forgiveness factor for Z depth in 2D projection
+    if (Math.abs(dy) > 100) return false;
+    return distSq < (rSum * rSum);
   }
 
   private handlePlayerCollision(ent: Entity) {
     ent.active = false;
-    if (ent.type === EntityType.GATE) this.applyGateBonus(ent.gateData!);
+    if (ent.type === EntityType.GATE) {
+      this.applyGateBonus(ent.gateData!);
+      SoundService.playPickup();
+    }
     else if (ent.type === EntityType.PICKUP) this.applyPickup(ent.pickupType!, ent.pos);
     this.createHitEffect(this.player.pos, EntityType.PLAYER);
     if (this.config.hapticsEnabled) navigator.vibrate(20);
@@ -579,10 +655,15 @@ export class GameEngine {
   private handleEnemyPlayerInteraction(ent: Entity) {
     if (ent.isStuckToPlayer || ent.isAttacking) return;
     if (this.checkCollision(this.player, ent)) {
-      ent.isStuckToPlayer = true;
-      ent.stickOffset = { x: ent.pos.x - this.player.pos.x, y: ent.pos.y - this.player.pos.y };
-      ent.stuckDamageTimer = 0; 
-      if (this.config.hapticsEnabled) navigator.vibrate(20);
+      if (ent.type === EntityType.BOSS) {
+         this.playerStats.projectileCount = 0; // Instant death from boss collision
+      } else {
+        ent.isStuckToPlayer = true;
+        ent.stickOffset = { x: ent.pos.x - this.player.pos.x, y: ent.pos.y - this.player.pos.y };
+        ent.stuckDamageTimer = 0; 
+        SoundService.playHit();
+        if (this.config.hapticsEnabled) navigator.vibrate(20);
+      }
     }
   }
 
@@ -597,17 +678,22 @@ export class GameEngine {
     let radius = type === PickupType.BOMB_SMALL ? 400 : (type === PickupType.BOMB_MEDIUM ? 800 : (type === PickupType.BOMB_LARGE ? 1200 : 2000));
     let color = type === PickupType.BOMB_SMALL ? COLORS.PICKUP_BOMB_SMALL : (type === PickupType.BOMB_MEDIUM ? COLORS.PICKUP_BOMB_MEDIUM : (type === PickupType.BOMB_LARGE ? COLORS.PICKUP_BOMB_LARGE : COLORS.PICKUP_CLUSTER));
     this.entities.forEach(e => {
-      if (e.active && e.type.startsWith('ENEMY') && e.pos.y < SPAWN_Z) {
+      if (e.active && (e.type.startsWith('ENEMY') || e.type === EntityType.BOSS) && e.pos.y < SPAWN_Z) {
         const dx = e.pos.x - origin.x; const dy = e.pos.y - origin.y;
         if (Math.sqrt(dx*dx + dy*dy) < radius) {
-          e.active = false; e.hp = 0;
-          this.createHitEffect(e.pos, e.type, 20);
-          this.score += (e.scoreValue || 10);
+          if (e.type === EntityType.BOSS) {
+              e.hp -= 1000;
+          } else {
+            e.active = false; e.hp = 0;
+            this.createHitEffect(e.pos, e.type, 20);
+            this.score += (e.scoreValue || 10);
+          }
         }
       }
     });
     this.createHitEffect(origin, EntityType.PARTICLE, 40, color);
     this.shakeTimer = 0.5;
+    SoundService.playExplosion(true);
     if (this.config.hapticsEnabled) navigator.vibrate(50);
   }
 
@@ -618,20 +704,11 @@ export class GameEngine {
     let sizeMult = 1;
     let countMult = 1;
 
-    if (sourceType === EntityType.ENEMY_GRUNT) {
-      color = COLORS.ENEMY_GRUNT;
-    } else if (sourceType === EntityType.ENEMY_SPRINTER) {
-      color = COLORS.ENEMY_SPRINTER;
-      sizeMult = 2;
-      countMult = 1.5;
-    } else if (sourceType === EntityType.ENEMY_TANK) {
-      color = COLORS.ENEMY_TANK;
-      sizeMult = 4;
-      countMult = 3;
-    } else if (sourceType === EntityType.PLAYER) {
-      color = COLORS.PLAYER;
-      shape = ParticleShape.RING;
-    }
+    if (sourceType === EntityType.ENEMY_GRUNT) color = COLORS.ENEMY_GRUNT;
+    else if (sourceType === EntityType.ENEMY_SPRINTER) { color = COLORS.ENEMY_SPRINTER; sizeMult = 2; countMult = 1.5; }
+    else if (sourceType === EntityType.ENEMY_TANK) { color = COLORS.ENEMY_TANK; sizeMult = 4; countMult = 3; }
+    else if (sourceType === EntityType.BOSS) { color = COLORS.BOSS; sizeMult = 6; countMult = 5; }
+    else if (sourceType === EntityType.PLAYER) { color = COLORS.PLAYER; shape = ParticleShape.RING; }
     
     let finalCount = Math.floor(baseCount * countMult);
     if (this.config.reducedEffects) finalCount = Math.ceil(finalCount / 2);
@@ -640,11 +717,9 @@ export class GameEngine {
        const angle = Math.random()*Math.PI*2; 
        const speed = (300 + Math.random()*500) * (1 + (sizeMult - 1) * 0.2);
        const pRadius = (Math.random()*4 + 2) * sizeMult;
-       
        this.particles.push({
          id: Math.random(), type: EntityType.PARTICLE, pos: {x: pos.x, y: pos.y}, 
-         radius: pRadius, width: pRadius,
-         active: true, hp: 1, maxHp: 1, color, lane: -1, particleShape: shape, 
+         radius: pRadius, width: pRadius, active: true, hp: 1, maxHp: 1, color, lane: -1, particleShape: shape, 
          velocity: { x: Math.cos(angle)*speed, y: Math.sin(angle)*speed },
          life: 0.5 * (1 + (sizeMult - 1) * 0.1), 
          maxLife: 0.5 * (1 + (sizeMult - 1) * 0.1), 
@@ -666,7 +741,7 @@ export class GameEngine {
     for (const ent of this.enemies) {
       if (!ent.active || ent.pos.y <= this.player.pos.y) continue;
       const dx = ent.pos.x - this.player.pos.x; const dy = ent.pos.y - this.player.pos.y;
-      if (Math.abs(Math.atan2(dx, dy)) <= (10 * Math.PI/180)) {
+      if (Math.abs(Math.atan2(dx, dy)) <= (15 * Math.PI/180)) {
         const sq = dx*dx + dy*dy; if (sq < minSq) { minSq = sq; nearest = ent; }
       }
     }
@@ -681,6 +756,9 @@ export class GameEngine {
     const offsets = this.getSquadOffsets(count);
     const target = this.findAutoAimTarget();
     const spread = MAX_SPREAD_ANGLE_DEG * (Math.PI/180) * Math.min(1.0, count/10);
+    
+    SoundService.playShoot();
+
     for (let i = 0; i < offsets.length; i++) {
       let dirX = 0; let dirY = 1;
       if (target) {
@@ -715,7 +793,11 @@ export class GameEngine {
     return offsets;
   }
 
-  private endGame() { this.state = GameState.GAME_OVER; this.onUIUpdate({ state: this.state }); }
+  private endGame() { 
+    this.state = GameState.GAME_OVER; 
+    SoundService.playExplosion(true);
+    this.onUIUpdate({ state: this.state }); 
+  }
 
   private project(p: Vector2): { x: number, y: number, scale: number, visible: boolean } {
     const z = p.y; if (z < -200 || z > DRAW_DISTANCE + 500) return { x:0, y:0, scale:0, visible: false };
@@ -729,11 +811,9 @@ export class GameEngine {
     const ctx = this.ctx; ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.save(); if (this.shakeTimer > 0) ctx.translate((Math.random()-0.5)*15, (Math.random()-0.5)*15);
     
-    // Performance optimized background
     this.drawCityscape(ctx);
     this.drawGrid(ctx);
     
-    // Render boundary lines
     ctx.save();
     ctx.shadowBlur = 40; ctx.shadowColor = COLORS.LANE_BORDER; ctx.strokeStyle = COLORS.LANE_BORDER; 
     ctx.lineWidth = 4;
@@ -743,7 +823,6 @@ export class GameEngine {
       if (pS.visible || pE.visible) { ctx.beginPath(); ctx.moveTo(pS.x, pS.y); ctx.lineTo(pE.x, pE.y); ctx.stroke(); }
     }
     
-    // Interior lines - less blur for performance
     ctx.lineWidth = 2; ctx.shadowBlur = 15; ctx.strokeStyle = COLORS.LANE_LINE;
     for (let i = 1; i < LANE_COUNT; i++) {
       const lx = this.getLaneWorldX(0) - 100 + (i * 200);
@@ -752,7 +831,6 @@ export class GameEngine {
     }
     ctx.restore();
 
-    // Grouping by type for batching
     const visibleEntities = this.entities.filter(e => e.active);
     const visibleParticles = this.particles.filter(p => p.active);
     const all = [...visibleEntities, ...visibleParticles].sort((a,b) => b.pos.y - a.pos.y);
@@ -761,11 +839,35 @@ export class GameEngine {
       const proj = this.project(ent.pos); if (!proj.visible) continue;
       if (ent.type === EntityType.GATE) this.drawGate(ctx, ent, proj);
       else if (ent.type === EntityType.PARTICLE) this.drawParticle(ctx, ent, proj);
+      else if (ent.type === EntityType.BOSS) this.drawBoss(ctx, ent, proj);
       else this.drawEntity(ctx, ent, proj);
     }
 
     if (this.invulnerabilityTimer <= 0 || Math.floor(performance.now()/50)%2 === 0) this.drawPlayerSquad(ctx);
     this.drawSnow(ctx);
+    ctx.restore();
+  }
+
+  private drawBoss(ctx: CanvasRenderingContext2D, ent: Entity, proj: { x: number, y: number, scale: number }) {
+    const r = ent.radius * proj.scale;
+    ctx.save();
+    ctx.shadowBlur = 50; ctx.shadowColor = COLORS.BOSS;
+    ctx.fillStyle = COLORS.BOSS;
+    ctx.beginPath();
+    ctx.moveTo(proj.x - r, proj.y);
+    ctx.lineTo(proj.x, proj.y - r * 1.5);
+    ctx.lineTo(proj.x + r, proj.y);
+    ctx.lineTo(proj.x, proj.y + r * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Core glow
+    const pulse = 0.5 + Math.sin(performance.now() * 0.01) * 0.5;
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = pulse;
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y - r * 0.3, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -821,15 +923,12 @@ export class GameEngine {
     let r = ent.radius * proj.scale; ctx.fillStyle = ent.color; 
     
     if (ent.type === EntityType.BULLET) {
-      // Bullet range-limiting visual: fade and shrink as it approaches limit
-      // Shrink/Fade start at BULLET_FADE_START (2500) and end at BULLET_MAX_RANGE (4000)
       let alpha = 1.0;
       if (ent.pos.y > BULLET_FADE_START) {
         const factor = (ent.pos.y - BULLET_FADE_START) / (BULLET_MAX_RANGE - BULLET_FADE_START);
         alpha = Math.max(0, 1.0 - factor);
         r *= alpha;
       }
-      
       ctx.save(); 
       ctx.globalAlpha = alpha;
       ctx.shadowBlur = 12 * alpha; ctx.shadowColor = ent.color;

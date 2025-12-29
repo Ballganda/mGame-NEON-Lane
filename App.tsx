@@ -1,10 +1,10 @@
-
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas.tsx';
 import { UIOverlay } from './components/UIOverlay.tsx';
 import { GameState, GameConfig, PlayerStats } from './types.ts';
 import { StorageService } from './services/StorageService.ts';
 import { GameEngine } from './services/GameEngine.ts';
+import { SoundService } from './services/SoundService.ts';
 import { BASE_PLAYER_SPEED, GAME_VERSION } from './constants.ts';
 
 export default function App() {
@@ -19,10 +19,15 @@ export default function App() {
     distance: 0,
     fps: 60,
     activeEntities: 0,
-    dps: 0
+    dps: 0,
+    bossHp: null
   });
 
   const engineRef = useRef<GameEngine | null>(null);
+
+  useEffect(() => {
+    SoundService.setEnabled(config.soundEnabled);
+  }, [config.soundEnabled]);
 
   const getInitialStats = (): PlayerStats => ({
     maxHp: 100,
@@ -34,10 +39,13 @@ export default function App() {
 
   const handleUIUpdate = useCallback((newStats: any) => {
     if (newStats.state && newStats.state !== gameState) {
+      if (newStats.state === GameState.GAME_OVER) {
+        StorageService.saveHighScore(newStats.score || stats.score);
+      }
       setGameState(newStats.state);
     }
     setStats(prev => ({ ...prev, ...newStats }));
-  }, [gameState]);
+  }, [gameState, stats.score]);
 
   const startGame = () => {
     if (engineRef.current) {
