@@ -1,4 +1,4 @@
-export const GAME_VERSION = 'V0.0.139';
+export const GAME_VERSION = 'V0.0.141';
 
 export const LANE_COUNT = 3;
 export const CANVAS_WIDTH = 720;
@@ -21,30 +21,23 @@ export const BASE_SCROLL_SPEED = 250;
 export const UNIFIED_ENTITY_SPEED = 400;
 export const CONVERGENCE_Z = 600;
 export const BOSS_APPEAR_DISTANCE = 30000; 
-export const GATE_SPAWN_DISTANCE = 16000; 
+export const GATE_SPAWN_DISTANCE = 4800; // Reduced from 16000 for better flow
 
 // Squad Visuals (1-2-3-4-3-2-1 Diamond)
-// Negative Z values place the squad BEHIND the player (closer to viewer/bottom of screen)
 export const MAX_SQUAD_DISPLAY = 16; 
 export const SQUAD_DOT_RADIUS = 5;
 export const SQUAD_OFFSETS = [
-  { x: 0, z: 0 },       // Tip (Player position)
-  // Row 1 (Immediately behind)
+  { x: 0, z: 0 },
   { x: -14, z: -24 }, { x: 14, z: -24 },
-  // Row 2
   { x: -28, z: -48 }, { x: 0, z: -48 }, { x: 28, z: -48 },
-  // Row 3 (Widest / Inner Section)
   { x: -42, z: -72 }, { x: -14, z: -72 }, { x: 14, z: -72 }, { x: 42, z: -72 },
-  // Row 4
   { x: -28, z: -96 }, { x: 0, z: -96 }, { x: 28, z: -96 },
-  // Row 5
   { x: -14, z: -120 }, { x: 14, z: -120 },
-  // Row 6 (Tail)
   { x: 0, z: -144 }
 ];
 
 // Limits & Caps
-export const MAX_PARTICLES = 450;
+export const MAX_PARTICLES = 250; 
 export const MAX_VISIBLE_SQUAD = 50; 
 export const MAX_PROJECTILES_PER_SHOT = 12; 
 

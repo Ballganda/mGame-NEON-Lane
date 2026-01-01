@@ -142,13 +142,13 @@ export const UIOverlay: React.FC<UIProps> = ({
 
   if (gameState === GameState.SETTINGS) {
     return (
-        <div className="absolute inset-0 bg-black z-40 flex flex-col p-6 pointer-events-auto overflow-hidden">
-            <div className="flex justify-center items-center mb-6 mt-4">
+        <div className="absolute inset-0 bg-black z-40 flex flex-col p-6 pointer-events-auto overflow-y-auto">
+            <div className="flex justify-center items-center mb-8 mt-4">
               <h2 className="text-4xl font-black text-white title-font tracking-widest uppercase">SETTINGS</h2>
             </div>
 
-            <div className="flex-1 flex flex-col justify-center space-y-6 w-full max-w-md mx-auto">
-                <div className="flex flex-col space-y-2">
+            <div className="flex flex-col space-y-8 w-full max-w-md mx-auto mb-12">
+                <div className="flex flex-col space-y-3">
                     <label className="text-xl text-white/60 font-medium tracking-wide">Difficulty</label>
                     <div className="relative">
                       <select 
@@ -186,15 +186,15 @@ export const UIOverlay: React.FC<UIProps> = ({
                         </div>
                     ))}
                 </div>
-            </div>
 
-            <div className="mt-auto mb-4 text-center">
-              <button 
-                onClick={() => onNavigate(previousState)} 
-                className="w-full max-w-md py-5 bg-[#1a1c25] text-white font-black text-xl uppercase tracking-widest hover:bg-[#252835] transition-colors border border-white/5"
-              >
-                BACK
-              </button>
+                <div className="h-px bg-white/10 w-full"></div>
+
+                <button 
+                  onClick={() => onNavigate(previousState)} 
+                  className="w-full py-5 bg-[#1a1c25] text-white font-black text-xl uppercase tracking-widest hover:bg-[#252835] transition-colors border border-white/5"
+                >
+                  BACK
+                </button>
             </div>
         </div>
     );
